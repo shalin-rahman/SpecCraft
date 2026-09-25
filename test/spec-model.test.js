@@ -39,6 +39,62 @@ test("rejects missing requirement fields and invalid enums", () => {
   );
 });
 
+test("finds ambiguous and incomplete requirement language", () => {
+  const findings = analyzeRequirement(
+    createRequirement({
+      id: "REQ-003",
+      title: "Close the account quickly",
+      description: "The system should close it normally."
+    })
+  );
+
+  assert.equal(findings.some((item) => item.type === "ambiguity"), true);
+  assert.equal(findings.some((item) => item.type === "incompleteness"), true);
+});
+
+test("compiles context and reports connected impact", () => {
+  const project = createSpecProject({
+    name: "Example",
+    requirements: [
+      { id: "REQ-001", title: "A", description: "A requirement", status: "approved" }
+    ],
+    rules: [{ id: "BR-001", requirementId: "REQ-001" }],
+    workflows: [{ id: "WF-001", requirementId: "REQ-001" }],
+    traceLinks: [
+      { from: "REQ-001", to: "BR-001", type: "governed-by" },
+      { from: "REQ-001", to: "test/a.js", type: "verified-by" }
+    ]
+  });
+
+  const context = compileContext(project, "REQ-001");
+  const impact = calculateImpact(project, "REQ-001");
+
+  assert.equal(context.rules[0].id, "BR-001");
+  assert.deepEqual(impact.affected, ["BR-001", "test/a.js"]);
+  assert.equal(context.contextPackage.task, "A");
+  assert.equal(context.contextPackage.requirements[0].id, "REQ-001");
+});
+
+test("calculates transitive impact across multiple graph hops", () => {
+  const project = createSpecProject({
+    name: "Example",
+    requirements: [{ id: "REQ-001", title: "A", description: "A requirement", status: "approved" }],
+    rules: [{ id: "BR-001", requirementId: "REQ-001" }],
+    workflows: [{ id: "WF-001", requirementId: "REQ-001" }],
+    traceLinks: [
+      { from: "REQ-001", to: "BR-001", type: "governed-by" },
+      { from: "BR-001", to: "WF-001", type: "implemented-by" },
+      { from: "WF-001", to: "src/service.js", type: "implemented-in" },
+      { from: "src/service.js", to: "test/service.test.js", type: "verified-by" }
+    ]
+  });
+
+  const impact = calculateImpact(project, "REQ-001");
+
+  assert.deepEqual(impact.affected.sort(), ["BR-001", "WF-001", "src/service.js", "test/service.test.js"].sort());
+  assert.equal(impact.artifacts.length >= 3, true);
+});
+
 test("summarizes project status and evidence", () => {
   const project = createSpecProject({
     name: "Example",
@@ -59,40 +115,6 @@ test("summarizes project status and evidence", () => {
         status: "draft"
       }
     ]
-  });
-
-  test("finds ambiguous and incomplete requirement language", () => {
-    const findings = analyzeRequirement(
-      createRequirement({
-        id: "REQ-003",
-        title: "Close the account quickly",
-        description: "The system should close it normally."
-      })
-    );
-
-    assert.equal(findings.some((item) => item.type === "ambiguity"), true);
-    assert.equal(findings.some((item) => item.type === "incompleteness"), true);
-  });
-
-  test("compiles context and reports connected impact", () => {
-    const project = createSpecProject({
-      name: "Example",
-      requirements: [
-        { id: "REQ-001", title: "A", description: "A requirement", status: "approved" }
-      ],
-      rules: [{ id: "BR-001", requirementId: "REQ-001" }],
-      workflows: [{ id: "WF-001", requirementId: "REQ-001" }],
-      traceLinks: [
-        { from: "REQ-001", to: "BR-001", type: "governed-by" },
-        { from: "REQ-001", to: "test/a.js", type: "verified-by" }
-      ]
-    });
-
-    const context = compileContext(project, "REQ-001");
-    const impact = calculateImpact(project, "REQ-001");
-
-    assert.equal(context.rules[0].id, "BR-001");
-    assert.deepEqual(impact.affected, ["BR-001", "test/a.js"]);
   });
 
   assert.deepEqual(summarizeProject(project), {
