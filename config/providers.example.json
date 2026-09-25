@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "providers": [
+    {
+      "id": "spec-kit",
+      "kind": "http-model",
+      "enabled": true,
+      "priority": 10,
+      "endpoint": "http://127.0.0.1:9001/spec-kit",
+      "allowedHosts": ["127.0.0.1"],
+      "allowLocal": true,
+      "model": "configured-by-service",
+      "timeoutMs": 30000,
+      "retries": 1
+    },
+    {
+      "id": "open-spec",
+      "kind": "http-model",
+      "enabled": true,
+      "priority": 20,
+      "endpoint": "http://127.0.0.1:9002/open-spec",
+      "allowedHosts": ["127.0.0.1"],
+      "allowLocal": true,
+      "model": "configured-by-service",
+      "timeoutMs": 30000,
+      "retries": 1
+    },
+    {
+      "id": "ollama-local",
+      "kind": "ollama",
+      "enabled": true,
+      "priority": 30,
+      "endpoint": "http://127.0.0.1:11434/api/chat",
+      "allowedHosts": ["127.0.0.1"],
+      "allowLocal": true,
+      "model": "qwen2.5-coder:7b",
+      "timeoutMs": 60000,
+      "retries": 0
+    }
+  ]
+}

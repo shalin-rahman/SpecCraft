@@ -1,0 +1,36 @@
+{
+  "hotspots": [
+    {
+      "label": "walk()",
+      "risk": 0.567,
+      "type": "FUNCTION"
+    },
+    {
+      "label": "compileContext()",
+      "risk": 0.435,
+      "type": "FUNCTION"
+    },
+    {
+      "label": "renderMvpDemo()",
+      "risk": 0.434,
+      "type": "FUNCTION"
+    },
+    {
+      "label": "createRequirement()",
+      "risk": 0.388,
+      "type": "FUNCTION"
+    },
+    {
+      "label": "analyzeRequirement()",
+      "risk": 0.342,
+      "type": "FUNCTION"
+    }
+  ],
+  "blast_radius": {
+    "walk()": 4,
+    "scanRepository()": 4,
+    "requireText()": 4,
+    "ensureRepositoryRoot()": 3,
+    "hash()": 3
+  }
+}

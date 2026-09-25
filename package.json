@@ -1,0 +1,15 @@
+{
+  "name": "speccraft",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A project knowledge layer for requirements, decisions, evidence, and implementation traceability.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "test:unit": "node --test test/**/*.test.js",
+    "platform": "node src/server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

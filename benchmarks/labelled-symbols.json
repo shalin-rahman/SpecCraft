@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "description": "Small expert-labelled symbol extraction fixture.",
+  "cases": [
+    {
+      "file": "sample.js",
+      "expectedSymbols": ["sample.js#closeMembership", "sample.js#Member"]
+    }
+  ]
+}

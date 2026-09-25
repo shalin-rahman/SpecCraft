@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SpecCraft — Keep the project understandable</title>
+    <meta
+      name="description"
+      content="SpecCraft is a working project record for requirements, code evidence, decisions, and change review."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="topbar">
+        <div class="brand-wrap">
+          <div class="brand-mark">S</div>
+          <div class="brand-text">SpecCraft</div>
+        </div>
+        <nav class="nav" aria-label="Main navigation">
+          <a href="#architecture">How it works</a>
+          <a href="#capabilities">What is here</a>
+          <a href="#mvp">Try the model</a>
+          <a href="#roadmap">Next steps</a>
+        </nav>
+        <a class="nav-cta" href="docs/user-guide.md">Read the guide</a>
+      </header>
+
+      <main>
+        <section class="hero" id="overview">
+          <div class="hero-copy">
+            <p class="eyebrow">A WORKING PROJECT RECORD</p>
+            <h1>
+              Make the project<br />
+              easier to understand.
+            </h1>
+            <p class="lede">
+              Requirements change. Code changes. People leave. SpecCraft keeps the decisions, evidence,
+              and open questions close enough to the code that the next person can follow them.
+            </p>
+            <div class="cta-row">
+              <a class="primary" href="#mvp">Try the working example</a>
+              <a class="secondary" href="docs/requirment-spec-of-SpecCraft.md">Read the specification</a>
+            </div>
+            <ul class="hero-points" aria-label="Key highlights">
+              <li>Write down the decision</li>
+              <li>Link it to evidence in the repository</li>
+              <li>Review what changed before it spreads</li>
+            </ul>
+          </div>
+
+          <div class="hero-panel" aria-label="SpecCraft architecture preview">
+            <div class="panel-window">
+              <div class="panel-header">
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
+              <div class="system-block system-human">
+                <span>Human</span>
+              </div>
+              <div class="flow flow-1"></div>
+              <div class="system-block system-agent">
+                <span>Editors, agents, and people</span>
+              </div>
+              <div class="flow flow-2"></div>
+              <div class="system-block system-core">
+                <span>SpecCraft Core</span>
+              </div>
+              <div class="core-tags">
+                <span>Requirements</span>
+                <span>Decisions</span>
+                <span>Evidence</span>
+                <span>Review</span>
+              </div>
+              <div class="integration-row">
+                <div class="integration-box">Git</div>
+                <div class="integration-box">Code Graph</div>
+                <div class="integration-box">Spec Kit / OpenSpec</div>
+              </div>
+              <div class="system-block system-code">
+                <span>Code</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="metrics" aria-label="Product metrics">
+          <div>
+            <strong>What this is</strong>
+            <span data-project-summary>Loading project summary</span>
+          </div>
+          <div>
+            <strong>Versioned evidence</strong>
+            <span>A small, inspectable project knowledge layer</span>
+          </div>
+          <div>
+            <strong>Drift-aware</strong>
+            <span>Local first, with clear production boundaries</span>
+          </div>
+        </section>
+
+        <section class="feature-block architecture" id="architecture">
+          <div class="section-header">
+            <p class="eyebrow">HOW IT WORKS</p>
+            <h2>Keep intent, evidence, and change review in the same loop.</h2>
+          </div>
+
+          <div class="diagram-stack">
+            <div class="stack-layer top">
+              <div class="layer-head">People describe the change</div>
+            </div>
+            <div class="stack-layer mid">
+              <div class="layer-head">Tools help inspect and explain it</div>
+            </div>
+            <div class="stack-layer core">
+              <div class="layer-head">SpecCraft keeps the record</div>
+              <div class="layer-items">
+                <span>Requirements</span>
+                <span>Evidence</span>
+                <span>Relationships</span>
+                <span>Review notes</span>
+              </div>
+            </div>
+            <div class="stack-layer bottom-row">
+              <div class="bottom-item">Git</div>
+              <div class="bottom-item">Code Graph</div>
+              <div class="bottom-item">Spec Kit</div>
+            </div>
+            <div class="stack-layer app">
+              <div class="layer-head">The repository remains the evidence</div>
+            </div>
+          </div>
+          <figure class="architecture-reference">
+            <img
+              src="assets/03-speccraft-knowledge-layer.jpg"
+              alt="Diagram showing SpecCraft as a knowledge layer between people, tools, and code"
+              loading="lazy"
+            />
+            <figcaption>The record is useful only when it stays connected to the work people can inspect.</figcaption>
+          </figure>
+        </section>
+
+        <section class="feature-block" id="capabilities">
+          <div class="section-header">
+            <p class="eyebrow">WHAT IS HERE</p>
+            <h2>Useful pieces, without pretending the hard parts are solved.</h2>
+          </div>
+
+          <div class="card-grid">
+            <article class="info-card">
+              <div class="card-icon">01</div>
+              <h3>Record the decision</h3>
+              <p>
+                Store the requirement, its status, the people involved, and the reason behind the choice.
+              </p>
+            </article>
+            <article class="info-card">
+              <div class="card-icon">02</div>
+              <h3>Read the existing code</h3>
+              <p>
+                Scan a brownfield repository and mark what was observed separately from what was inferred.
+              </p>
+            </article>
+            <article class="info-card">
+              <div class="card-icon">03</div>
+              <h3>Spot drift</h3>
+              <p>
+                Compare file hashes and project records so a change can be reviewed while it is still small.
+              </p>
+            </article>
+            <article class="info-card">
+              <div class="card-icon">04</div>
+              <h3>Build a focused context</h3>
+              <p>
+                Give a person or tool the relevant requirement, symbols, links, and evidence instead of the whole repository.
+              </p>
+            </article>
+            <article class="info-card">
+              <div class="card-icon">05</div>
+              <h3>Keep adapters replaceable</h3>
+              <p>
+                Spec Kit, OpenSpec, Ollama, and other providers are selected through configuration.
+              </p>
+            </article>
+            <article class="info-card">
+              <div class="card-icon">06</div>
+              <h3>Be honest about the boundary</h3>
+              <p>
+                Local adapters are working references. Managed storage, identity, queues, and security review still need deployment work.
+              </p>
+            </article>
+          </div>
+        </section>
+
+        <section class="feature-block why" id="why">
+          <div class="section-header narrow">
+            <p class="eyebrow">THE PROBLEM</p>
+            <h2>A project can have plenty of documentation and still be hard to change safely.</h2>
+          </div>
+
+          <div class="quote-panel">
+            <p>
+              A ticket describes a change. The repository shows what was built. The useful explanation sits between them.
+            </p>
+          </div>
+
+          <div class="split-layout">
+            <div class="split-copy">
+              <h3>Specifications are only one part</h3>
+              <p>
+                A written plan is valuable, but it cannot by itself explain an older codebase or prove that
+                the implementation still matches the plan.
+              </p>
+              <p>
+                SpecCraft treats those connections as project data that can be inspected and reviewed.
+              </p>
+            </div>
+            <div class="split-copy accent-box">
+              <h3>A practical middle layer</h3>
+              <p>
+                It does not replace Git, an issue tracker, or a coding tool. It gives them a shared record of
+                why the work exists and what supports it.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section class="feature-block mvp" id="mvp">
+          <div class="section-header">
+            <p class="eyebrow">TRY THE WORKING EXAMPLE</p>
+            <h2>Start with one requirement and see what the model can connect.</h2>
+          </div>
+          <div class="mvp-layout">
+            <div class="mvp-panel">
+              <div class="mvp-label">Requirement</div>
+              <form class="requirement-form" data-requirement-form>
+                <label>
+                  Title
+                  <input name="title" value="Keep project knowledge versioned" required />
+                </label>
+                <label>
+                  Description
+                  <textarea name="description" rows="3" required>Requirements, decisions, and evidence live with the code.</textarea>
+                </label>
+                <button class="primary" type="submit">Check the requirement</button>
+              </form>
+              <div class="mvp-meta">
+                <span data-requirement-id>REQ-001</span>
+                <span data-requirement-status>Draft review</span>
+                <span>High priority</span>
+              </div>
+            </div>
+            <div class="mvp-panel">
+              <div class="mvp-label">Review findings</div>
+              <ul class="finding-list" data-findings>
+                <li>Loading findings...</li>
+              </ul>
+            </div>
+            <div class="mvp-panel">
+              <div class="mvp-label">Traceability and impact</div>
+              <p class="mvp-result" data-impact>Calculating impact...</p>
+              <p class="context-label">Compiled task context</p>
+              <code class="context-result" data-context>Loading context...</code>
+            </div>
+          </div>
+        </section>
+
+        <section class="feature-block roadmap" id="roadmap">
+          <div class="section-header">
+            <p class="eyebrow">NEXT STEPS</p>
+            <h2>Build the durable parts only after the model earns its place.</h2>
+          </div>
+
+          <div class="roadmap-list">
+            <div class="roadmap-item">
+              <span>Phase 1</span>
+              <strong>Keep the model small</strong>
+              <p>Requirements, decisions, links, evidence, and review status come first.</p>
+            </div>
+            <div class="roadmap-item">
+              <span>Phase 2</span>
+              <strong>Make history dependable</strong>
+              <p>Use durable revisions, audit records, and a clear conflict model.</p>
+            </div>
+            <div class="roadmap-item">
+              <span>Phase 3</span>
+              <strong>Scale the repository view</strong>
+              <p>Add full parsers, incremental scans, and measured support for large codebases.</p>
+            </div>
+            <div class="roadmap-item">
+              <span>Phase 4</span>
+              <strong>Operate it safely</strong>
+              <p>Add managed identity, secret storage, queues, rate limits, and independent security testing.</p>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="script.js"></script>
+    <script type="module" src="src/app.js"></script>
+  </body>
+</html>

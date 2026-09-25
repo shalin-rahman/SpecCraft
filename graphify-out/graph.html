@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>graphify - spec-craft</title>
+<script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0f0f1a; color: #e0e0e0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; display: flex; height: 100vh; overflow: hidden; }
+  #graph { flex: 1; }
+  #sidebar { width: 280px; background: #1a1a2e; border-left: 1px solid #2a2a4e; display: flex; flex-direction: column; overflow: hidden; }
+  #search-wrap { padding: 12px; border-bottom: 1px solid #2a2a4e; }
+  #search { width: 100%; background: #0f0f1a; border: 1px solid #3a3a5e; color: #e0e0e0; padding: 7px 10px; border-radius: 6px; font-size: 13px; outline: none; }
+  #search:focus { border-color: #4E79A7; }
+  #search-results { max-height: 140px; overflow-y: auto; padding: 4px 12px; border-bottom: 1px solid #2a2a4e; display: none; }
+  .search-item { padding: 4px 6px; cursor: pointer; border-radius: 4px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .search-item:hover { background: #2a2a4e; }
+  #info-panel { padding: 14px; border-bottom: 1px solid #2a2a4e; min-height: 140px; }
+  #info-panel h3 { font-size: 13px; color: #aaa; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em; }
+  #info-content { font-size: 13px; color: #ccc; line-height: 1.6; }
+  #info-content .field { margin-bottom: 5px; }
+  #info-content .field b { color: #e0e0e0; }
+  #info-content .empty { color: #555; font-style: italic; }
+  .neighbor-link { display: block; padding: 2px 6px; margin: 2px 0; border-radius: 3px; cursor: pointer; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-left: 3px solid #333; }
+  .neighbor-link:hover { background: #2a2a4e; }
+  #neighbors-list { max-height: 160px; overflow-y: auto; margin-top: 4px; }
+  #legend-wrap { flex: 1; overflow-y: auto; padding: 12px; }
+  #legend-wrap h3 { font-size: 13px; color: #aaa; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .legend-item { display: flex; align-items: center; gap: 8px; padding: 4px 0; cursor: pointer; border-radius: 4px; font-size: 12px; }
+  .legend-item:hover { background: #2a2a4e; padding-left: 4px; }
+  .legend-item.dimmed { opacity: 0.35; }
+  .legend-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+  .legend-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .legend-count { color: #666; font-size: 11px; }
+  #stats { padding: 10px 14px; border-top: 1px solid #2a2a4e; font-size: 11px; color: #555; }
+  .toggle-wrap { padding: 12px; border-bottom: 1px solid #2a2a4e; display: flex; align-items: center; justify-content: space-between; font-size: 13px; }
+  .switch { position: relative; display: inline-block; width: 34px; height: 20px; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #2a2a4e; transition: .4s; border-radius: 20px; }
+  .slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+  input:checked + .slider { background-color: #4E79A7; }
+  input:checked + .slider:before { transform: translateX(14px); }
+  .metric-badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; margin-left: 6px; text-transform: uppercase; }
+  .metric-high { background: #ef4444; color: #fff; }
+  .metric-medium { background: #f59e0b; color: #fff; }
+  .metric-low { background: #10b981; color: #fff; }
+  #heatmap-legend { display: none; margin-top: 10px; padding: 10px; background: #0f0f1a; border-radius: 6px; border: 1px solid #2a2a4e; }
+  .h-leg-item { display: flex; align-items: center; gap: 8px; font-size: 11px; margin: 4px 0; }
+  .h-leg-bar { height: 10px; flex: 1; border-radius: 5px; background: linear-gradient(to right, #10b981, #f59e0b, #ef4444); }
+  /* Schema Modal */
+  #schema-modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.8); }
+  #schema-modal-content { background-color: #1a1a2e; margin: 5% auto; padding: 20px; border: 1px solid #3a3a5e; border-radius: 12px; width: 60%; max-height: 80%; overflow-y: auto; box-shadow: 0 10px 40px rgba(0,0,0,0.5); }
+  #schema-modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid #2a2a4e; padding-bottom: 10px; }
+  #schema-modal-header h2 { font-size: 18px; color: #fff; }
+  .close-modal { color: #aaa; font-size: 28px; font-weight: bold; cursor: pointer; }
+  .close-modal:hover { color: #fff; }
+  .schema-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+  .schema-table th { text-align: left; background: #2a2a4e; padding: 10px; font-size: 13px; color: #aaa; text-transform: uppercase; }
+  .schema-table td { padding: 10px; border-bottom: 1px solid #2a2a4e; font-size: 13px; color: #ccc; }
+  .schema-table tr:hover { background: #1e1e36; }
+  .schema-pk { color: #f1c40f; font-weight: bold; }
+  .schema-fk { color: #8b5cf6; font-style: italic; }
+  .lineage-item { background: #2a2a4e; padding: 10px; border-radius: 6px; border-left: 3px solid #4E79A7; cursor: pointer; transition: background 0.2s; }
+  .lineage-item:hover { background: #3a3a5e; }
+</style>
+</head>
+<body>
+<div id="graph"></div>
+<div id="sidebar">
+  <div style="padding: 14px; border-bottom: 1px solid #2a2a4e;">
+    <div style="display: flex; align-items: center; justify-content: space-between;">
+        <h2 id="proj-name" style="font-size: 16px; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">spec-craft</h2>
+        <span onclick="editProjectName()" style="cursor:pointer; opacity: 0.5; font-size: 12px;" title="Rename Project">✏️</span>
+    </div>
+  </div>
+  <div class="toggle-wrap">
+    <span>Deep Dive Mode</span>
+    <label class="switch">
+      <input type="checkbox" id="granularity-toggle" >
+      <span class="slider"></span>
+    </label>
+  </div>
+  <div class="toggle-wrap">
+    <span>Full Detail Mode</span>
+    <label class="switch">
+      <input type="checkbox" id="full-detail-toggle">
+      <span class="slider"></span>
+    </label>
+  </div>
+  <div class="toggle-wrap">
+    <span>Heatmap Mode</span>
+    <label class="switch">
+      <input type="checkbox" id="heatmap-toggle">
+      <span class="slider"></span>
+    </label>
+  </div>
+  <div id="heatmap-legend">
+    <div class="h-leg-item"><span>Low Risk</span><div class="h-leg-bar"></div><span>High Risk</span></div>
+  </div>
+  <div class="toggle-wrap">
+    <span>Simulation Mode</span>
+    <label class="switch">
+      <input type="checkbox" id="simulation-toggle">
+      <span class="slider"></span>
+    </label>
+  </div>
+  <div id="sim-hint" style="display:none; padding: 10px; background: #2a2a4e; font-size: 11px; color: #4E79A7; text-align: center;">
+    🏗️ Click nodes to simulate removal
+  </div>
+  <div id="info-panel">
+    <h3>Node Info</h3>
+    <div id="info-content"><span class="empty">Click a node to inspect it</span></div>
+  </div>
+  <div id="legend-wrap">
+    <h3>Communities</h3>
+    <div id="legend"></div>
+  </div>
+  <div id="stats">43 nodes &middot; 49 edges &middot; 10 communities</div>
+</div>
+<script>
+const RAW_NODES = [{"id": "c_users_habiburrahmanshalin_workstation_shaleen_applicationdevelopment_spec_craft_script_js", "label": "script.js", "color": {"background": "#EDC948", "border": "#EDC948", "highlight": {"background": "#ffffff", "border": "#EDC948"}}, "size": 20.2, "shape": "dot", "image": null, "shadow": false, "font": {"size": 12, "color": "#ffffff"}, "title": "script.js", "community": 5, "community_name": "Community 5", "source_file": "C:\\Users\\HabiburRahmanShalin\\workstation\\shaleen\\ApplicationDevelopment\\spec-craft\\script.js", "file_type": "code", "degree": 3, "_level": 1, "_granularity": "low", "heat": 0.089, "complexity": 1, "loc": 1, "_type": "FUNCTION", "columns": []}, {"id": "script_navlinks", "label": "navLinks", "color": {"background": "#EDC948", "border": "#EDC948", "highlight": {"background": "#ffffff", "border": "#EDC948"}}, "size": 14.7, "shape": "dot", "image": null, "shadow": false, "font": {"size": 0, "color": "#ffffff"}, "title": "navLinks", "community": 5, "community_name": "Community 5", "source_file": "C:\\Users\\HabiburRahmanShalin\\workstation\\shaleen\\ApplicationDevelopment\\spec-craft\\script.js", "file_type": "code", "degree": 1, "_level": 3, "_granularity": "low", "heat": 0.053, "complexity": 1, "loc": 1, "_type": "FUNCTION", "columns": []}, {"id": "script_targetid", "label": "targetId", "color": {"background": "#EDC948", "border": "#EDC948", "highlight": {"background": "#ffffff", "border": "#EDC948"}}, "size": 14.7, "shape": "dot", "image": null, "shadow": false, "font": {"size": 0, "color": "#ffffff"}, "title": "targetId", "community": 5, "community_name": "Community 5", "source_file": "C:\\Users\\HabiburRahmanShalin\\workstation\\shaleen\\ApplicationDevelopment\\spec-craft\\script.js", "file_type": "code", "degree": 1, "_level": 3, "_granularity": "low", "heat": 0.053, "complexity": 1, "loc": 1, "_type": "FUNCTION", "columns": []}, {"id": "script_target", "label": "target", "color": {"background": "#EDC948", "border": "#EDC948", "highlight": {"background": "#ffffff", "border": "#EDC948"}}, "size": 14.7, "shape": "dot", "image": null, "shadow": false, "font": {"size": 0, "color": "#ffffff"}, "title": "target", "community": 5, "community_name": "Community 5", "source_file": "C:\\Users\\HabiburRahmanShalin\\workstation\\shaleen\\ApplicationDevelopment\\spec-craft\\script.js", "file_type": "code", "degree": 1, "_level": 3, "_granularity": "low", "heat": 0.053, "complexity": 1, "loc": 1, "_type": "FUNCTION", "columns": []}, {"id": "c_users_habiburrahmanshalin_workstation_shaleen_applicationdevelopment_spec_craft_src_app_js", "label": "app.js", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 20.2, "shape": "dot", "image": null, "shadow": false, "font": {"size": 12, "color": "#ffffff"}, "title": "app.js", "community": 2, "community_name": "Community 2", "source_file": "C:\\Users\\HabiburRahmanShalin\\workstation\\shaleen\\ApplicationDevelopment\\spec-craft\\src\\app.js", "file_type": "code", "degree": 3, "_level": 0, "_granularity": "low", "heat": 0.089, "complexity": 1, "loc": 1, "_type": "FUNCTION", "columns": []}, {"id": "app_demoproject", "label": "demoProject", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 14.7, "shape": "dot", "image": null, "shadow": false, "font": {"size": 0, "color": "#ffffff"}, "title": "demoProject", "community": 2, "community_name": "Community 2", "source_file": "C:\\Users\\HabiburRahmanShalin\\workstation\\shaleen\\ApplicationDevelopment\\spec-craft\\src\\app.js", "file_type": "code", "degree": 1, "_level": 3, "_granularity": "low", "heat": 0.2, "complexity": 1, "loc": 40, "_type": "FUNCTION", "columns": []}, {"id": "app_renderprojectsummary", "label": "renderProjectSummary()", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 17.5, "shape": "dot", "image": null, "shadow": false, "font": {"size": 12, "color": "#ffffff"}, "title": "renderProjectSummary()", "community": 2, "community_name": "Community 2", "source_file": "C:\\Users\\HabiburRahmanShalin\\workstation\\shaleen\\ApplicationDevelopment\\spec-craft\\src\\app.js", "file_type": "code", "degree": 2, "_level": 2, "_granularity": "low", "heat": 0.124, "complexity": 2, "loc": 7, "_type": "FUNCTION", "columns": []}, {"id": "app_rendermvpdemo", "label": "renderMvpDemo()", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 14.7, "shape": "dot", "image": null, "shadow": false, "font": {"size": 0, "color": "#ffffff"}, "title": "renderMvpDemo()", "community": 2, "community_name": "Community 2", "source_file": "C:\\Users\\HabiburRahmanShalin\\workstation\\shaleen\\ApplicationDevelopment\\spec-craft\\src\\app.js", "file_type": "code", "degree": 1, "_level": 3, "_granularity": "low", "heat": 0.434, "complexity": 7, "loc": 53, "_type": "FUNCTION", "columns": []}, {"id": "c_users_habiburrahmanshalin_workstation_shaleen_applicationdevelopment_spec_craft_src_code_graph_js", "label": "code-graph.js", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 22.9, "shape": "dot", "image": null, "shadow": false, "font": {"size": 12, "color": "#ffffff"}, "title": "code-graph.js", "community": 3, "community_name": "Community 3", "source_file": "C:\\Users\\HabiburRahmanShalin\\workstation\\shaleen\\ApplicationDevelopment\\spec-craft\\src\\code-graph.js", "file_type": "code", "degree": 4, "_level": 1, "_granularity": "low", "heat": 0.107, "complexity": 1, "loc": 1, "_type": "FUNCTION", "columns": []}, {"id": "code_graph_symbolpatterns", "label": "symbolPatterns", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 14.7, "shape": "dot", "image": null, "shadow": false, "font": {"size": 0, "color": "#ffffff"}, "title": "symbolPatterns", "community": 3, "community_name": "Community 3", "source_file": "C:\\Users\\HabiburRahmanShalin\\workstation\\shaleen\\ApplicationDevelopment\\spec-craft\\src\\code-graph.js", "file_type": "code", "degree": 1, "_level": 3, "_granularity": "low", "heat": 0.09, "complexity": 1, "loc": 11, "_type": "FUNCTION", "columns": []}, {"id": "code_graph_linenumber", "label": "lineNumber()", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 17.5, "shape": "dot", "image": null, "shadow": false, "font": {"size": 12, "color": "#ffffff"}, "title": "lineNumber()", "community": 3, "community_name": "Community 3", "source_file": "C:\\Users\\HabiburRahmanShalin\\workstation\\shaleen\\ApplicationDevelopment\\spec-craft\\src\\code-graph.js", "file_type": "code", "degree": 2, "_level": 2, "_granularity": "low", "heat": 0.078, "complexity": 1, "loc": 3, "_type": "FUNCTION", "columns": []}, {"id": "code_graph_extractsymbols", "label": "extractSymbols()", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 17.5, "shape": "dot", "image": null, "shadow": false, "font": {"size": 12, "color": "#ffffff"}, "title": "extractSymbols()", "community": 3, "community_name": "Community 3", "source_file": "C:\\Users\\HabiburRahmanShalin\\workstation\\shaleen\\ApplicationDevelopment\\spec-craft\\src\\code-graph.js", "file_type": "code", "degree": 2, "_level": 2, "_granularity": "low", "heat": 0.285, "complexity": 6, "loc": 17, "_type": "FUNCTION", "columns": []}, {"id": "code_graph_buildcodegraph", "label": "buildCodeGraph()", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 14.7, "shape": "dot", "image": null, "shadow": false, "font": {"size": 0, "color": "#ffffff"}, "title": "buildCodeGraph()", "community": 3, "community_name": "Community 3", "source_file": "C:\\Users\\HabiburRahmanShalin\\workstation\\shaleen\\ApplicationDevelopment\\spec-craft\\src\\code-graph.js", "file_type": "code", "degree": 1, "_level": 3, "_granularity": "low", "heat": 0.14, "complexity": 1, "loc": 24, "_type": "FUNCTION", "columns": []}, {"id": "c_users_habiburrahmanshalin_workstation_shaleen_applicationdevelopment_spec_craft_src_repository_platform_js", "label": "repository-platform.js", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 42.0, "shape": "dot", "image": null, "shadow": false, "font": {"size": 12, "color": "#ffffff"}, "title": "repository-platform.js", "community": 0, "community_name": "Community 0", "source_file": "C:\\Users\\HabiburRahmanShalin\\workstation\\shaleen\\ApplicationDevelopment\\spec-craft\\src\\repository-platform.js", "file_type": "code", "degree": 11, "_level": 0, "_granularity": "low", "heat": 0.235, "complexity": 1, "loc": 1, "_type": "FUNCTION", "columns": []}, {"id": "repository_platform_ignoreddirectories", "label": "ignoredDirectories", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 14.7, "shape": "dot", "image": null, "shadow": false, "font": {"size": 0, "color": "#ffffff"}, "title": "ignoredDirectories", "community": 0, "community_name": "Community 0", "source_file": "C:\\Users\\HabiburRahmanShalin\\workstation\\shaleen\\ApplicationDevelopment\\spec-craft\\src\\repository-platform.js", "file_type": "code", "degree": 1, "_level": 3, "_granularity": "low", "heat": 0.053, "complexity": 1, "loc": 1, "_type": "FUNCTION", "columns": []}, {"id": "repository_platform_ignoredfiles", "label": "ignoredFiles", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 14.7, "shape": "dot", "image": null, "shadow": false, "font": {"size": 0, "color": "#ffffff"}, "title": "ignoredFiles", "community": 0, "community_name": "Community 0", "source_file": "C:\\Users\\HabiburRahmanShalin\\workstation\\shaleen\\ApplicationDevelopment\\spec-craft\\src\\repository-platform.js", "file_type": "code", "degree": 1, "_level": 3, "_granularity": "low", "heat": 0.053, "complexity": 1, "loc": 1, "_type": "FUNCTION", "columns": []}, {"id": "repository_platform_supportedextensions", "label": "supportedExtensions", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 14.7, "shape": "dot", "image": null, "shadow": false, "font": {"size": 0, "color": "#ffffff"}, "title": "supportedExtensions", "community": 0, "community_name": "Community 0", "source_file": "C:\\Users\\HabiburRahmanShalin\\workstation\\shaleen\\ApplicationDevelopment\\spec-craft\\src\\repository-platform.js", "file_type": "code", "degree": 1, "_level": 3, "_granularity": "low", "heat": 0.053, "complexity": 1, "loc": 1, "_type": "FUNCTION", "columns": []}, {"id": "repository_platform_maxfilebytes", "label": "maxFileBytes", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 14.7, "shape": "dot", "image": null, "shadow": false, "font": {"size": 0, "color": "#ffffff"}, "title": "maxFileBytes", "community": 0, "community_name": "Community 0", "source_file": "C:\\Users\\HabiburRahmanShalin\\workstation\\shaleen\\ApplicationDevelopment\\spec-craft\\src\\repository-platform.js", "file_type": "code", "degree": 1, "_level": 3, "_granularity": "low", "heat": 0.053, "complexity": 1, "loc": 1, "_type": "FUNCTION", "columns": []}, {"id": "repository_platform_maxfiles", "label": "maxFiles", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 14.7, "shape": "dot", "image": null, "shadow": false, "font": {"size": 0, "color": "#ffffff"}, "title": "maxFiles", "community": 0, "community_name": "Community 0", "source_file": "C:\\Users\\HabiburRahmanShalin\\workstation\\shaleen\\ApplicationDevelopment\\spec-craft\\src\\repository-platform.js", "file_type": "code", "degree": 1, "_level": 3, "_granularity": "low", "heat": 0.053, "complexity": 1, "loc": 1, "_type": "FUNCTION", "columns": []}, {"id": "repository_platform_ensurerepositoryroot", "label": "ensureRepositoryRoot()", "color": {"background": "#9C755F", "border": "#9C755F", "highlight": {"background": "#ffffff", "border": "#9C755F"}}, "size": 20.2, "shape": "dot", "image": null, "shadow": false, "font": {"size": 12, "color": "#ffffff"}, "title": "ensureRepositoryRoot()", "community": 8, "community_name": "Community 8", "source_file": "C:\\Users\\HabiburRahmanShalin\\workstation\\shaleen\\ApplicationDevelopment\\spec-craft\\src\\repository-platform.js", "file_type": "code", "degree": 3, "_level": 0, "_granularity": "low", "heat": 0.204, "complexity": 4, "loc": 7, "_type": "FUNCTION", "columns": []}, {"id": "repository_platform_parsepathroot", "label": "parsePathRoot()", "color": {"background": "#9C755F", "border": "#9C755F", "highlight": {"background": "#ffffff", "border": "#9C755F"}}, "size": 17.5, "shape": "dot", "image": null, "shadow": false, "font": {"size": 12, "color": "#ffffff"}, "title": "parsePathRoot()", "community": 8, "community_name": "Community 8", "source_file": "C:\\Users\\HabiburRahmanShalin\\workstation\\shaleen\\ApplicationDevelopment\\spec-craft\\src\\repository-platform.js", "file_type": "code", "degree": 2, "_level": 0, "_granularity": "low", "heat": 0.082, "complexity": 1, "loc": 4, "_type": "FUNCTION", "columns": []}, {"id": "repository_platform_hash", "label": "hash()", "color": {"background": "#B07AA1", "border": "#B07AA1", "highlight": {"background": "#ffffff", "border": "#B07AA1"}}, "size": 20.2, "shape": "dot", "image": null, "shadow": false, "font": {"size": 12, "color": "#ffffff"}, "title": "hash()", "community": 6, "community_name": "Community 6", "source_file": "C:\\Users\\HabiburRahmanShalin\\workstation\\shaleen\\ApplicationDevelopment\\spec-craft\\src\\repository-platform.js", "file_type": "code", "degree": 3, "_level": 1, "_granularity": "low", "heat": 0.097, "complexity": 1, "loc": 3, "_type": "FUNCTION", "columns": []}, {"id": "repository_platform_languagefor", "label": "languageFor()", "color": {"background": "#B07AA1", "border": "#B07AA1", "highlight": {"background": "#ffffff", "border": "#B07AA1"}}, "size": 17.5, "shape": "dot", "image": null, "shadow": false, "font": {"size": 12, "color": "#ffffff"}, "title": "languageFor()", "community": 6, "community_name": "Community 6", "source_file": "C:\\Users\\HabiburRahmanShalin\\workstation\\shaleen\\ApplicationDevelopment\\spec-craft\\src\\repository-platform.js", "file_type": "code", "degree": 2, "_level": 1, "_granularity": "low", "heat": 0.113, "complexity": 2, "loc": 4, "_type": "FUNCTION", "columns": []}, {"id": "repository_platform_walk", "label": "walk()", "color": {"background": "#e74c3c", "border": "#e74c3c", "highlight": {"background": "#ffffff", "border": "#e74c3c"}}, "size": 22.9, "shape": "dot", "image": null, "shadow": false, "font": {"size": 12, "color": "#ffffff"}, "title": "walk()", "community": 6, "community_name": "Community 6", "source_file": "C:\\Users\\HabiburRahmanShalin\\workstation\\shaleen\\ApplicationDevelopment\\spec-craft\\src\\repository-platform.js", "file_type": "code", "degree": 4, "_level": 1, "_granularity": "low", "heat": 0.567, "complexity": 13, "loc": 25, "_type": "FUNCTION", "columns": []}, {"id": "repository_platform_scanrepository", "label": "scanRepository()", "color": {"background": "#B07AA1", "border": "#B07AA1", "highlight": {"background": "#ffffff", "border": "#B07AA1"}}, "size": 22.9, "shape": "dot", "image": null, "shadow": false, "font": {"size": 12, "color": "#ffffff"}, "title": "scanRepository()", "community": 6, "community_name": "Community 6", "source_file": "C:\\Users\\HabiburRahmanShalin\\workstation\\shaleen\\ApplicationDevelopment\\spec-craft\\src\\repository-platform.js", "file_type": "code", "degree": 4, "_level": 1, "_granularity": "low", "heat": 0.141, "complexity": 1, "loc": 10, "_type": "FUNCTION", "columns": []}, {"id": "c_users_habiburrahmanshalin_workstation_shaleen_applicationdevelopment_spec_craft_src_spec_model_js", "label": "spec-model.js", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 42.0, "shape": "dot", "image": null, "shadow": false, "font": {"size": 12, "color": "#ffffff"}, "title": "spec-model.js", "community": 4, "community_name": "Community 4", "source_file": "C:\\Users\\HabiburRahmanShalin\\workstation\\shaleen\\ApplicationDevelopment\\spec-craft\\src\\spec-model.js", "file_type": "code", "degree": 11, "_level": 0, "_granularity": "low", "heat": 0.235, "complexity": 1, "loc": 1, "_type": "FUNCTION", "columns": []}, {"id": "spec_model_validstatuses", "label": "validStatuses", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 14.7, "shape": "dot", "image": null, "shadow": false, "font": {"size": 0, "color": "#ffffff"}, "title": "validStatuses", "community": 4, "community_name": "Community 4", "source_file": "C:\\Users\\HabiburRahmanShalin\\workstation\\shaleen\\ApplicationDevelopment\\spec-craft\\src\\spec-model.js", "file_type": "code", "degree": 1, "_level": 3, "_granularity": "low", "heat": 0.053, "complexity": 1, "loc": 1, "_type": "FUNCTION", "columns": []}, {"id": "spec_model_validpriorities", "label": "validPriorities", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 14.7, "shape": "dot", "image": null, "shadow": false, "font": {"size": 0, "color": "#ffffff"}, "title": "validPriorities", "community": 4, "community_name": "Community 4", "source_file": "C:\\Users\\HabiburRahmanShalin\\workstation\\shaleen\\ApplicationDevelopment\\spec-craft\\src\\spec-model.js", "file_type": "code", "degree": 1, "_level": 3, "_granularity": "low", "heat": 0.053, "complexity": 1, "loc": 1, "_type": "FUNCTION", "columns": []}, {"id": "spec_model_ambiguousterms", "label": "ambiguousTerms", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 14.7, "shape": "dot", "image": null, "shadow": false, "font": {"size": 0, "color": "#ffffff"}, "title": "ambiguousTerms", "community": 4, "community_name": "Community 4", "source_file": "C:\\Users\\HabiburRahmanShalin\\workstation\\shaleen\\ApplicationDevelopment\\spec-craft\\src\\spec-model.js", "file_type": "code", "degree": 1, "_level": 3, "_granularity": "low", "heat": 0.053, "complexity": 1, "loc": 1, "_type": "FUNCTION", "columns": []}, {"id": "spec_model_requiretext", "label": "requireText()", "color": {"background": "#FF9DA7", "border": "#FF9DA7", "highlight": {"background": "#ffffff", "border": "#FF9DA7"}}, "size": 22.9, "shape": "dot", "image": null, "shadow": false, "font": {"size": 12, "color": "#ffffff"}, "title": "requireText()", "community": 7, "community_name": "Community 7", "source_file": "C:\\Users\\HabiburRahmanShalin\\workstation\\shaleen\\ApplicationDevelopment\\spec-craft\\src\\spec-model.js", "file_type": "code", "degree": 4, "_level": 1, "_granularity": "low", "heat": 0.249, "complexity": 5, "loc": 6, "_type": "FUNCTION", "columns": []}, {"id": "spec_model_createrequirement", "label": "createRequirement()", "color": {"background": "#FF9DA7", "border": "#FF9DA7", "highlight": {"background": "#ffffff", "border": "#FF9DA7"}}, "size": 17.5, "shape": "dot", "image": null, "shadow": false, "font": {"size": 12, "color": "#ffffff"}, "title": "createRequirement()", "community": 7, "community_name": "Community 7", "source_file": "C:\\Users\\HabiburRahmanShalin\\workstation\\shaleen\\ApplicationDevelopment\\spec-craft\\src\\spec-model.js", "file_type": "code", "degree": 2, "_level": 1, "_granularity": "low", "heat": 0.388, "complexity": 8, "loc": 28, "_type": "FUNCTION", "columns": []}, {"id": "spec_model_createtracelink", "label": "createTraceLink()", "color": {"background": "#FF9DA7", "border": "#FF9DA7", "highlight": {"background": "#ffffff", "border": "#FF9DA7"}}, "size": 17.5, "shape": "dot", "image": null, "shadow": false, "font": {"size": 12, "color": "#ffffff"}, "title": "createTraceLink()", "community": 7, "community_name": "Community 7", "source_file": "C:\\Users\\HabiburRahmanShalin\\workstation\\shaleen\\ApplicationDevelopment\\spec-craft\\src\\spec-model.js", "file_type": "code", "degree": 2, "_level": 1, "_granularity": "low", "heat": 0.239, "complexity": 5, "loc": 13, "_type": "FUNCTION", "columns": []}, {"id": "spec_model_analyzerequirement", "label": "analyzeRequirement()", "color": {"background": "#BAB0AC", "border": "#BAB0AC", "highlight": {"background": "#ffffff", "border": "#BAB0AC"}}, "size": 17.5, "shape": "dot", "image": null, "shadow": false, "font": {"size": 12, "color": "#ffffff"}, "title": "analyzeRequirement()", "community": 9, "community_name": "Community 9", "source_file": "C:\\Users\\HabiburRahmanShalin\\workstation\\shaleen\\ApplicationDevelopment\\spec-craft\\src\\spec-model.js", "file_type": "code", "degree": 2, "_level": 1, "_granularity": "low", "heat": 0.342, "complexity": 6, "loc": 32, "_type": "FUNCTION", "columns": []}, {"id": "spec_model_compilecontext", "label": "compileContext()", "color": {"background": "#BAB0AC", "border": "#BAB0AC", "highlight": {"background": "#ffffff", "border": "#BAB0AC"}}, "size": 17.5, "shape": "dot", "image": null, "shadow": false, "font": {"size": 12, "color": "#ffffff"}, "title": "compileContext()", "community": 9, "community_name": "Community 9", "source_file": "C:\\Users\\HabiburRahmanShalin\\workstation\\shaleen\\ApplicationDevelopment\\spec-craft\\src\\spec-model.js", "file_type": "code", "degree": 2, "_level": 1, "_granularity": "low", "heat": 0.435, "complexity": 11, "loc": 16, "_type": "FUNCTION", "columns": []}, {"id": "spec_model_calculateimpact", "label": "calculateImpact()", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 14.7, "shape": "dot", "image": null, "shadow": false, "font": {"size": 0, "color": "#ffffff"}, "title": "calculateImpact()", "community": 4, "community_name": "Community 4", "source_file": "C:\\Users\\HabiburRahmanShalin\\workstation\\shaleen\\ApplicationDevelopment\\spec-craft\\src\\spec-model.js", "file_type": "code", "degree": 1, "_level": 3, "_granularity": "low", "heat": 0.325, "complexity": 8, "loc": 16, "_type": "FUNCTION", "columns": []}, {"id": "spec_model_createspecproject", "label": "createSpecProject()", "color": {"background": "#FF9DA7", "border": "#FF9DA7", "highlight": {"background": "#ffffff", "border": "#FF9DA7"}}, "size": 17.5, "shape": "dot", "image": null, "shadow": false, "font": {"size": 12, "color": "#ffffff"}, "title": "createSpecProject()", "community": 7, "community_name": "Community 7", "source_file": "C:\\Users\\HabiburRahmanShalin\\workstation\\shaleen\\ApplicationDevelopment\\spec-craft\\src\\spec-model.js", "file_type": "code", "degree": 2, "_level": 1, "_granularity": "low", "heat": 0.193, "complexity": 3, "loc": 17, "_type": "FUNCTION", "columns": []}, {"id": "spec_model_summarizeproject", "label": "summarizeProject()", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 17.5, "shape": "dot", "image": null, "shadow": false, "font": {"size": 12, "color": "#ffffff"}, "title": "summarizeProject()", "community": 2, "community_name": "Community 2", "source_file": "C:\\Users\\HabiburRahmanShalin\\workstation\\shaleen\\ApplicationDevelopment\\spec-craft\\src\\spec-model.js", "file_type": "code", "degree": 2, "_level": 1, "_granularity": "low", "heat": 0.293, "complexity": 7, "loc": 11, "_type": "FUNCTION", "columns": []}, {"id": "c_users_habiburrahmanshalin_workstation_shaleen_applicationdevelopment_spec_craft_test_spec_model_test_js", "label": "spec-model.test.js", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 25.6, "shape": "dot", "image": null, "shadow": false, "font": {"size": 12, "color": "#ffffff"}, "title": "spec-model.test.js", "community": 1, "community_name": "Community 1", "source_file": "C:\\Users\\HabiburRahmanShalin\\workstation\\shaleen\\ApplicationDevelopment\\spec-craft\\test\\spec-model.test.js", "file_type": "code", "degree": 5, "_level": 1, "_granularity": "low", "heat": 0.125, "complexity": 1, "loc": 1, "_type": "FUNCTION", "columns": []}, {"id": "spec_model_test_requirement", "label": "requirement", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 14.7, "shape": "dot", "image": null, "shadow": false, "font": {"size": 0, "color": "#ffffff"}, "title": "requirement", "community": 1, "community_name": "Community 1", "source_file": "C:\\Users\\HabiburRahmanShalin\\workstation\\shaleen\\ApplicationDevelopment\\spec-craft\\test\\spec-model.test.js", "file_type": "code", "degree": 1, "_level": 3, "_granularity": "low", "heat": 0.068, "complexity": 1, "loc": 5, "_type": "FUNCTION", "columns": []}, {"id": "spec_model_test_project", "label": "project", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 14.7, "shape": "dot", "image": null, "shadow": false, "font": {"size": 0, "color": "#ffffff"}, "title": "project", "community": 1, "community_name": "Community 1", "source_file": "C:\\Users\\HabiburRahmanShalin\\workstation\\shaleen\\ApplicationDevelopment\\spec-craft\\test\\spec-model.test.js", "file_type": "code", "degree": 1, "_level": 3, "_granularity": "low", "heat": 0.124, "complexity": 1, "loc": 20, "_type": "FUNCTION", "columns": []}, {"id": "spec_model_test_findings", "label": "findings", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 14.7, "shape": "dot", "image": null, "shadow": false, "font": {"size": 0, "color": "#ffffff"}, "title": "findings", "community": 1, "community_name": "Community 1", "source_file": "C:\\Users\\HabiburRahmanShalin\\workstation\\shaleen\\ApplicationDevelopment\\spec-craft\\test\\spec-model.test.js", "file_type": "code", "degree": 1, "_level": 3, "_granularity": "low", "heat": 0.075, "complexity": 1, "loc": 7, "_type": "FUNCTION", "columns": []}, {"id": "spec_model_test_context", "label": "context", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 14.7, "shape": "dot", "image": null, "shadow": false, "font": {"size": 0, "color": "#ffffff"}, "title": "context", "community": 1, "community_name": "Community 1", "source_file": "C:\\Users\\HabiburRahmanShalin\\workstation\\shaleen\\ApplicationDevelopment\\spec-craft\\test\\spec-model.test.js", "file_type": "code", "degree": 1, "_level": 3, "_granularity": "low", "heat": 0.053, "complexity": 1, "loc": 1, "_type": "FUNCTION", "columns": []}, {"id": "spec_model_test_impact", "label": "impact", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 14.7, "shape": "dot", "image": null, "shadow": false, "font": {"size": 0, "color": "#ffffff"}, "title": "impact", "community": 1, "community_name": "Community 1", "source_file": "C:\\Users\\HabiburRahmanShalin\\workstation\\shaleen\\ApplicationDevelopment\\spec-craft\\test\\spec-model.test.js", "file_type": "code", "degree": 1, "_level": 3, "_granularity": "low", "heat": 0.053, "complexity": 1, "loc": 1, "_type": "FUNCTION", "columns": []}];
+const RAW_EDGES = [{"from": "c_users_habiburrahmanshalin_workstation_shaleen_applicationdevelopment_spec_craft_script_js", "to": "script_navlinks", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "c_users_habiburrahmanshalin_workstation_shaleen_applicationdevelopment_spec_craft_script_js", "to": "script_targetid", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "c_users_habiburrahmanshalin_workstation_shaleen_applicationdevelopment_spec_craft_script_js", "to": "script_target", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "c_users_habiburrahmanshalin_workstation_shaleen_applicationdevelopment_spec_craft_src_app_js", "to": "app_demoproject", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "c_users_habiburrahmanshalin_workstation_shaleen_applicationdevelopment_spec_craft_src_app_js", "to": "app_renderprojectsummary", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "c_users_habiburrahmanshalin_workstation_shaleen_applicationdevelopment_spec_craft_src_app_js", "to": "app_rendermvpdemo", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "app_renderprojectsummary", "to": "spec_model_summarizeproject", "label": "calls", "title": "calls [INFERRED]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": "INFERRED"}, {"from": "c_users_habiburrahmanshalin_workstation_shaleen_applicationdevelopment_spec_craft_src_code_graph_js", "to": "code_graph_symbolpatterns", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "c_users_habiburrahmanshalin_workstation_shaleen_applicationdevelopment_spec_craft_src_code_graph_js", "to": "code_graph_linenumber", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "c_users_habiburrahmanshalin_workstation_shaleen_applicationdevelopment_spec_craft_src_code_graph_js", "to": "code_graph_extractsymbols", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "c_users_habiburrahmanshalin_workstation_shaleen_applicationdevelopment_spec_craft_src_code_graph_js", "to": "code_graph_buildcodegraph", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "code_graph_linenumber", "to": "code_graph_extractsymbols", "label": "calls", "title": "calls [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "c_users_habiburrahmanshalin_workstation_shaleen_applicationdevelopment_spec_craft_src_repository_platform_js", "to": "repository_platform_ignoreddirectories", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "c_users_habiburrahmanshalin_workstation_shaleen_applicationdevelopment_spec_craft_src_repository_platform_js", "to": "repository_platform_ignoredfiles", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "c_users_habiburrahmanshalin_workstation_shaleen_applicationdevelopment_spec_craft_src_repository_platform_js", "to": "repository_platform_supportedextensions", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "c_users_habiburrahmanshalin_workstation_shaleen_applicationdevelopment_spec_craft_src_repository_platform_js", "to": "repository_platform_maxfilebytes", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "c_users_habiburrahmanshalin_workstation_shaleen_applicationdevelopment_spec_craft_src_repository_platform_js", "to": "repository_platform_maxfiles", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "c_users_habiburrahmanshalin_workstation_shaleen_applicationdevelopment_spec_craft_src_repository_platform_js", "to": "repository_platform_ensurerepositoryroot", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "c_users_habiburrahmanshalin_workstation_shaleen_applicationdevelopment_spec_craft_src_repository_platform_js", "to": "repository_platform_parsepathroot", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "c_users_habiburrahmanshalin_workstation_shaleen_applicationdevelopment_spec_craft_src_repository_platform_js", "to": "repository_platform_hash", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "c_users_habiburrahmanshalin_workstation_shaleen_applicationdevelopment_spec_craft_src_repository_platform_js", "to": "repository_platform_languagefor", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "c_users_habiburrahmanshalin_workstation_shaleen_applicationdevelopment_spec_craft_src_repository_platform_js", "to": "repository_platform_walk", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "c_users_habiburrahmanshalin_workstation_shaleen_applicationdevelopment_spec_craft_src_repository_platform_js", "to": "repository_platform_scanrepository", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "repository_platform_ensurerepositoryroot", "to": "repository_platform_parsepathroot", "label": "calls", "title": "calls [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "repository_platform_ensurerepositoryroot", "to": "repository_platform_scanrepository", "label": "calls", "title": "calls [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "repository_platform_hash", "to": "repository_platform_walk", "label": "calls", "title": "calls [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "repository_platform_hash", "to": "repository_platform_scanrepository", "label": "calls", "title": "calls [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "repository_platform_languagefor", "to": "repository_platform_walk", "label": "calls", "title": "calls [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "repository_platform_walk", "to": "repository_platform_scanrepository", "label": "calls", "title": "calls [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "c_users_habiburrahmanshalin_workstation_shaleen_applicationdevelopment_spec_craft_src_spec_model_js", "to": "spec_model_validstatuses", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "c_users_habiburrahmanshalin_workstation_shaleen_applicationdevelopment_spec_craft_src_spec_model_js", "to": "spec_model_validpriorities", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "c_users_habiburrahmanshalin_workstation_shaleen_applicationdevelopment_spec_craft_src_spec_model_js", "to": "spec_model_ambiguousterms", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "c_users_habiburrahmanshalin_workstation_shaleen_applicationdevelopment_spec_craft_src_spec_model_js", "to": "spec_model_requiretext", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "c_users_habiburrahmanshalin_workstation_shaleen_applicationdevelopment_spec_craft_src_spec_model_js", "to": "spec_model_createrequirement", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "c_users_habiburrahmanshalin_workstation_shaleen_applicationdevelopment_spec_craft_src_spec_model_js", "to": "spec_model_createtracelink", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "c_users_habiburrahmanshalin_workstation_shaleen_applicationdevelopment_spec_craft_src_spec_model_js", "to": "spec_model_analyzerequirement", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "c_users_habiburrahmanshalin_workstation_shaleen_applicationdevelopment_spec_craft_src_spec_model_js", "to": "spec_model_compilecontext", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "c_users_habiburrahmanshalin_workstation_shaleen_applicationdevelopment_spec_craft_src_spec_model_js", "to": "spec_model_calculateimpact", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "c_users_habiburrahmanshalin_workstation_shaleen_applicationdevelopment_spec_craft_src_spec_model_js", "to": "spec_model_createspecproject", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "c_users_habiburrahmanshalin_workstation_shaleen_applicationdevelopment_spec_craft_src_spec_model_js", "to": "spec_model_summarizeproject", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "spec_model_requiretext", "to": "spec_model_createrequirement", "label": "calls", "title": "calls [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "spec_model_requiretext", "to": "spec_model_createtracelink", "label": "calls", "title": "calls [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "spec_model_requiretext", "to": "spec_model_createspecproject", "label": "calls", "title": "calls [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "spec_model_analyzerequirement", "to": "spec_model_compilecontext", "label": "calls", "title": "calls [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "c_users_habiburrahmanshalin_workstation_shaleen_applicationdevelopment_spec_craft_test_spec_model_test_js", "to": "spec_model_test_requirement", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "c_users_habiburrahmanshalin_workstation_shaleen_applicationdevelopment_spec_craft_test_spec_model_test_js", "to": "spec_model_test_project", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "c_users_habiburrahmanshalin_workstation_shaleen_applicationdevelopment_spec_craft_test_spec_model_test_js", "to": "spec_model_test_findings", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "c_users_habiburrahmanshalin_workstation_shaleen_applicationdevelopment_spec_craft_test_spec_model_test_js", "to": "spec_model_test_context", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "c_users_habiburrahmanshalin_workstation_shaleen_applicationdevelopment_spec_craft_test_spec_model_test_js", "to": "spec_model_test_impact", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}];
+const LEGEND = [{"cid": 0, "color": "#4E79A7", "label": "Community 0", "count": 6, "summary": ""}, {"cid": 1, "color": "#F28E2B", "label": "Community 1", "count": 6, "summary": ""}, {"cid": 2, "color": "#E15759", "label": "Community 2", "count": 5, "summary": ""}, {"cid": 3, "color": "#76B7B2", "label": "Community 3", "count": 5, "summary": ""}, {"cid": 4, "color": "#59A14F", "label": "Community 4", "count": 5, "summary": ""}, {"cid": 5, "color": "#EDC948", "label": "Community 5", "count": 4, "summary": ""}, {"cid": 6, "color": "#B07AA1", "label": "Community 6", "count": 4, "summary": ""}, {"cid": 7, "color": "#FF9DA7", "label": "Community 7", "count": 4, "summary": ""}, {"cid": 8, "color": "#9C755F", "label": "Community 8", "count": 2, "summary": ""}, {"cid": 9, "color": "#BAB0AC", "label": "Community 9", "count": 2, "summary": ""}];
+
+// HTML-escape helper — prevents XSS when injecting graph data into innerHTML
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// Build vis datasets
+let currentGranularity = 'low'; // default
+let heatmapEnabled = false;
+let fullDetailMode = false;
+const nodesDS = new vis.DataSet(RAW_NODES.map(n => {
+  const nodeObj = {
+    id: n.id, label: n.label, color: n.color,
+    size: n.size,
+    shape: (n._type === 'STATE_STORE') ? 'hexagon' : (n.shape || 'dot'),
+    font: n.font, title: n.title,
+    hidden: n._granularity === 'high' && currentGranularity === 'low',
+    _community: n.community, _community_name: n.community_name,
+    _source_file: n.source_file, _file_type: n.file_type, _degree: n.degree,
+    _granularity: n._granularity, _level: n._level,
+    _heat: n.heat, _complexity: n.complexity, _loc: n.loc, _type: n._type,
+    _columns: n.columns || [],
+    _sim_ghosted: false
+  };
+  if (n.image) nodeObj.image = n.image;
+  if (n.shadow) nodeObj.shadow = { enabled: true, color: 'rgba(0,0,0,0.5)', size: 10, x: 5, y: 5 };
+  return nodeObj;
+}));
+
+const edgesDS = new vis.DataSet(RAW_EDGES.map((e, i) => ({
+  id: i, from: e.from, to: e.to,
+  label: '',
+  title: e.title,
+  dashes: e.dashes,
+  width: e.width,
+  color: e.color,
+  hidden: false,
+  arrows: { to: { enabled: true, scaleFactor: 0.5 } },
+})));
+
+function updateGranularity(mode) {
+  currentGranularity = mode;
+  updateZoomLevels();
+}
+
+let simulationModeEnabled = false;
+function updateStats() {
+  const visibleNodes = nodesDS.get({ filter: n => !n.hidden && !n._sim_ghosted });
+  const visibleEdges = edgesDS.get({ filter: e => !e.hidden });
+  document.getElementById('stats').innerHTML = `${visibleNodes.length} nodes &middot; ${visibleEdges.length} edges &middot; (Simulation active)`;
+}
+
+function toggleSimulationMode(enabled) {
+  simulationModeEnabled = enabled;
+  if (!enabled) {
+    // Reset all ghosted nodes
+    nodesDS.update(RAW_NODES.map(n => ({ id: n.id, opacity: 1, _sim_ghosted: false })));
+    updateZoomLevels();
+    document.getElementById('stats').innerHTML = "%STATS%"; // Use the template original
+  }
+  document.getElementById('sim-hint').style.display = enabled ? 'block' : 'none';
+}
+
+function ghostNode(nodeId) {
+  const n = nodesDS.get(nodeId);
+  if (!n) return;
+  const isGhosted = !n._sim_ghosted;
+  nodesDS.update({ id: nodeId, _sim_ghosted: isGhosted, opacity: isGhosted ? 0.2 : 1 });
+  
+  updateZoomLevels();
+  updateStats();
+}
+
+function updateZoomLevels() {
+  const scale = network.getScale();
+  // Thresholds:
+  // < 0.4: Only L0 (Global)
+  // < 0.8: L0 + L1 (Strategic)
+  // < 1.3: L0 + L1 + L2 (Implementation)
+  // >= 1.3: All (L3 Deep Dive)
+  
+  const nodeUpdates = RAW_NODES.map(n => {
+    let shouldHide = false;
+    
+    if (!fullDetailMode) {
+      if (scale < 0.4 && n._level > 0) shouldHide = true;
+      else if (scale < 0.8 && n._level > 1) shouldHide = true;
+      else if (scale < 1.3 && n._level > 2) shouldHide = true;
+    }
+    
+    // Also respect the global granularity toggle
+    if (n._granularity === 'high' && currentGranularity === 'low') shouldHide = true;
+    
+    return { id: n.id, hidden: shouldHide };
+  });
+  nodesDS.update(nodeUpdates);
+
+  // Sync edge visibility
+  const visibleNodeIds = new Set(nodesDS.get({ filter: n => !n.hidden }).map(n => n.id));
+  const edgeUpdates = RAW_EDGES.map((e, i) => ({
+    id: i,
+    hidden: !visibleNodeIds.has(e.from) || !visibleNodeIds.has(e.to)
+  }));
+  edgesDS.update(edgeUpdates);
+}
+
+const container = document.getElementById('graph');
+const network = new vis.Network(container, { nodes: nodesDS, edges: edgesDS }, {
+  physics: {
+    enabled: true,
+    solver: 'forceAtlas2Based',
+    forceAtlas2Based: {
+      gravitationalConstant: -60,
+      centralGravity: 0.005,
+      springLength: 120,
+      springConstant: 0.08,
+      damping: 0.4,
+      avoidOverlap: 0.8,
+    },
+    stabilization: { iterations: 200, fit: true },
+  },
+  interaction: {
+    hover: true,
+    tooltipDelay: 100,
+    hideEdgesOnDrag: true,
+    navigationButtons: false,
+    keyboard: false,
+  },
+  nodes: { shape: 'dot', borderWidth: 1.5 },
+  edges: { smooth: { type: 'continuous', roundness: 0.2 }, selectionWidth: 3 },
+});
+
+network.once('stabilizationIterationsDone', () => {
+  network.setOptions({ physics: { enabled: false } });
+  updateZoomLevels(); // Initial sync
+});
+
+network.on('zoom', updateZoomLevels);
+network.on('dragEnd', updateZoomLevels);
+
+function showInfo(nodeId) {
+  const n = nodesDS.get(nodeId);
+  if (!n) return;
+  const neighborIds = network.getConnectedNodes(nodeId);
+  const neighborItems = neighborIds.map(nid => {
+    const nb = nodesDS.get(nid);
+    const color = nb ? nb.color.background : '#555';
+    return `<span class="neighbor-link" style="border-left-color:${esc(color)}" onclick="focusNode(${JSON.stringify(nid)})">${esc(nb ? nb.label : nid)}</span>`;
+  }).join('');
+  
+  const heatClass = n._heat > 0.7 ? 'metric-high' : (n._heat > 0.4 ? 'metric-medium' : 'metric-low');
+  
+  // Phase 5: Refactoring Strategist logic
+  let strategy = '';
+  if (n._heat > 0.5) {
+    const steps = [];
+    if (n._degree > 12) steps.push("<b>Decouple:</b> Node is a 'God Hub'. Extract interfaces to reduce coupling.");
+    if (n._complexity > 15) steps.push("<b>Decompose:</b> Logic density is high. Split into smaller sub-functions.");
+    if (n._granularity === 'low' && n._degree > 20) steps.push("<b>Domain Split:</b> This bridge node anchors too many communities. Split by domain.");
+    
+    if (steps.length > 0) {
+      strategy = `<div style="margin-top:12px; padding:10px; background:#2a2a4e; border-radius:6px; border-left:3px solid #f59e0b;">
+        <div style="font-size:11px; color:#f59e0b; font-weight:bold; margin-bottom:5px;">🚀 REFACTORING STRATEGY</div>
+        <ul style="padding-left:15px; font-size:11px; color:#ccc;">
+          ${steps.map(s => `<li style="margin-bottom:4px;">${s}</li>`).join('')}
+        </ul>
+      </div>`;
+    }
+  }
+
+    const typeLabel = n._type === 'DB_TABLE' ? 'DB Table' : (n._type === 'DB_COLLECTION' ? 'DB Collection' : (n._type === 'SCHEMA' ? 'Schema' : esc(n._file_type || 'unknown')));
+    
+    document.getElementById('info-content').innerHTML = `
+    <div class="field"><b>${esc(n.label)}</b> ${n._type === 'STATE_STORE' ? '<span class="metric-badge" style="background:#8b5cf6">Store</span>' : ''}</div>
+    <div class="field">Type: <span style="color:#f1c40f; font-weight:bold">${typeLabel}</span></div>
+    <div class="field">Risk: <span class="metric-badge ${heatClass}">${(n._heat * 100).toFixed(0)}%</span></div>
+    <div class="field">Complexity: ${n._complexity || 1}</div>
+    <div class="field">LOC: ${n._loc || 1}</div>
+    ${n._level !== undefined ? `<div class="field">Level: ${n._level}</div>` : ''}
+    <div class="field">Owner: <span class="metric-badge" style="background:#4b5563;color:#fff">${esc(n._owner || 'unowned')}</span></div>
+    ${n._sensitivity === 'HIGH' ? '<div class="field">Sensitivity: <span class="metric-badge" style="background:#dc2626;color:#fff">⚠️ HIGH RISK</span></div>' : ''}
+    <div class="field">Community: ${esc(n._community_name)}</div>
+    <div class="field">Source: ${esc(n._source_file || '-')}</div>
+    <div class="field">Degree: ${n._degree}</div>
+    ${n._columns && n._columns.length > 0 ? `
+      <button id="view-schema-btn" onclick="openSchemaModal(decodeURIComponent('${encodeURIComponent(n.id)}'))" style="margin-top:10px; width:100%; background:#f1c40f; color:#000; border:none; padding:10px; border-radius:6px; font-weight:bold; cursor:pointer; font-size:12px; box-shadow: 0 0 10px rgba(241, 196, 15, 0.3);">🔍 VIEW DETAILED SCHEMA</button>
+    ` : ''}
+    ${strategy}
+    ${neighborIds.length ? `<div class="field" style="margin-top:8px;color:#aaa;font-size:11px">Neighbors (${neighborIds.length})</div><div id="neighbors-list">${neighborItems}</div>` : ''}
+  `;
+}
+
+function openSchemaModal(nodeId) {
+  const n = nodesDS.get(nodeId);
+  if (!n || !n._columns) return;
+  
+  const modal = document.getElementById('schema-modal');
+  const title = document.getElementById('schema-title');
+  const body = document.getElementById('schema-body');
+  
+  title.innerText = `Schema: ${n.label}`;
+  
+  // Section 1: Table Schema
+  let html = `<div style="margin-bottom:20px;">
+    <h3 style="font-size:14px; color:#f1c40f; margin-bottom:10px; text-transform:uppercase;">📊 Table Structure</h3>
+    <table class="schema-table">
+      <thead>
+        <tr><th>Field</th><th>Type</th><th>Connections</th></tr>
+      </thead>
+      <tbody>`;
+  
+  n._columns.forEach(col => {
+    const isPK = col.name === '_id' || col.name === 'id';
+    const fk = col.foreign_key ? `<span class="schema-fk">➔ ref ${esc(col.foreign_key)}</span>` : '';
+    html += `<tr>
+      <td class="${isPK ? 'schema-pk' : ''}">${esc(col.name)}${isPK ? ' (PK)' : ''}</td>
+      <td style="color:#888">${esc(col.type)}</td>
+      <td>${fk}</td>
+    </tr>`;
+  });
+  html += `</tbody></table></div>`;
+  
+  // Section 2: Lineage (Who calls this?)
+  const connectedIds = network.getConnectedNodes(nodeId);
+  const callers = [];
+  const relatedDBs = [];
+  
+  connectedIds.forEach(cid => {
+    const node = nodesDS.get(cid);
+    if (!node) return;
+    if (node._type === 'DB_TABLE' || node._type === 'DB_COLLECTION' || node._type === 'SCHEMA') {
+      relatedDBs.push(node);
+    } else {
+      callers.push(node);
+    }
+  });
+  
+  if (callers.length > 0) {
+    html += `<div style="margin-bottom:20px;">
+      <h3 style="font-size:14px; color:#4E79A7; margin-bottom:10px; text-transform:uppercase;">🔗 Calling Functions & Logic</h3>
+      <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap:8px;">
+        ${callers.map(c => `
+          <div class="lineage-item" onclick="closeSchemaModal(); focusNode('${c.id}')">
+            <span style="color:#ccc;">${esc(c.label)}</span>
+            <div style="font-size:9px; color:#666; margin-top:2px;">${esc(c._source_file)}</div>
+          </div>
+        `).join('')}
+      </div>
+    </div>`;
+  }
+  
+  if (relatedDBs.length > 0) {
+    html += `<div style="margin-bottom:20px;">
+      <h3 style="font-size:14px; color:#9b59b6; margin-bottom:10px; text-transform:uppercase;">🗄️ Related Schemas (FK/Lineage)</h3>
+      <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap:8px;">
+        ${relatedDBs.map(r => `
+          <div class="lineage-item" style="border-left-color:#f1c40f" onclick="closeSchemaModal(); focusNode('${r.id}')">
+            <span style="color:#f1c40f; font-weight:bold;">${esc(r.label)}</span>
+            <div style="font-size:9px; color:#666; margin-top:2px;">Type: ${esc(r._type)}</div>
+          </div>
+        `).join('')}
+      </div>
+    </div>`;
+  }
+  
+  body.innerHTML = html;
+  modal.style.display = 'block';
+}
+
+function closeSchemaModal() {
+  document.getElementById('schema-modal').style.display = 'none';
+}
+
+function postToVSCode(msg) {
+  if (typeof vscode !== 'undefined') {
+    vscode.postMessage(msg);
+  } else {
+    // External browser mode: use URI handler
+    if (msg.command === 'focusNode') {
+      window.location.href = `vscode://AnytechieStudio.graphify-vscode/focusNode?id=${encodeURIComponent(msg.nodeId)}`;
+    } else if (msg.command === 'renameProject') {
+       // Deep linking rename might be complex, let's stick to focus for now
+       alert("Rename is only available inside VS Code.");
+    }
+  }
+}
+
+function focusNode(nodeId) {
+  network.focus(nodeId, { scale: 1.4, animation: true });
+  network.selectNodes([nodeId]);
+  showInfo(nodeId);
+  postToVSCode({ command: 'focusNode', nodeId: nodeId });
+}
+
+// Track hovered node — hover detection is more reliable than click params
+let hoveredNodeId = null;
+network.on('hoverNode', params => {
+  hoveredNodeId = params.node;
+  container.style.cursor = 'pointer';
+});
+network.on('blurNode', () => {
+  hoveredNodeId = null;
+  container.style.cursor = 'default';
+});
+container.addEventListener('click', () => {
+  if (hoveredNodeId !== null) {
+    showInfo(hoveredNodeId);
+    network.selectNodes([hoveredNodeId]);
+  }
+});
+network.on('click', params => {
+  if (params.nodes.length > 0) {
+    if (simulationModeEnabled) {
+      ghostNode(params.nodes[0]);
+    } else {
+      showInfo(params.nodes[0]);
+    }
+  } else if (hoveredNodeId === null) {
+    document.getElementById('info-content').innerHTML = '<span class="empty">Click a node to inspect it</span>';
+  }
+});
+
+const searchInput = document.getElementById('search');
+const searchResults = document.getElementById('search-results');
+searchInput.addEventListener('input', () => {
+  const q = searchInput.value.toLowerCase().trim();
+  searchResults.innerHTML = '';
+  if (!q) { searchResults.style.display = 'none'; return; }
+  const matches = RAW_NODES.filter(n => n.label.toLowerCase().includes(q)).slice(0, 20);
+  if (!matches.length) { searchResults.style.display = 'none'; return; }
+  searchResults.style.display = 'block';
+  matches.forEach(n => {
+    const el = document.createElement('div');
+    el.className = 'search-item';
+    el.textContent = n.label;
+    el.style.borderLeft = `3 solid ${n.color.background}`;
+    el.style.paddingLeft = '8px';
+    el.onclick = () => {
+      network.focus(n.id, { scale: 1.5, animation: true });
+      network.selectNodes([n.id]);
+      showInfo(n.id);
+      searchResults.style.display = 'none';
+      searchInput.value = '';
+    };
+    searchResults.appendChild(el);
+  });
+});
+document.addEventListener('click', e => {
+  if (!searchResults.contains(e.target) && e.target !== searchInput)
+    searchResults.style.display = 'none';
+});
+
+const hiddenCommunities = new Set();
+const legendEl = document.getElementById('legend');
+LEGEND.forEach(c => {
+  const item = document.createElement('div');
+  item.className = 'legend-item';
+  if (c.summary) item.title = c.summary;
+  item.innerHTML = `<div class="legend-dot" style="background:${c.color}"></div>
+    <span class="legend-label">${c.label}</span>
+    <span class="legend-count">${c.count}</span>`;
+  item.onclick = () => {
+    if (hiddenCommunities.has(c.cid)) {
+      hiddenCommunities.delete(c.cid);
+      item.classList.remove('dimmed');
+    } else {
+      hiddenCommunities.add(c.cid);
+      item.classList.add('dimmed');
+    }
+    const updates = RAW_NODES
+      .filter(n => n.community === c.cid)
+      .map(n => ({ id: n.id, hidden: hiddenCommunities.has(c.cid) }));
+    nodesDS.update(updates);
+  };
+  legendEl.appendChild(item);
+});
+</script>
+<script>
+function editProjectName() {
+    const current = document.getElementById('proj-name').innerText;
+    postToVSCode({ command: 'renameProject', currentName: current });
+}
+document.getElementById('granularity-toggle').addEventListener('change', (e) => {
+    updateGranularity(e.target.checked ? 'high' : 'low');
+});
+document.getElementById('heatmap-toggle').addEventListener('change', (e) => {
+    toggleHeatmap(e.target.checked);
+});
+document.getElementById('simulation-toggle').addEventListener('change', (e) => {
+    toggleSimulationMode(e.target.checked);
+});
+document.getElementById('full-detail-toggle').addEventListener('change', (e) => {
+    fullDetailMode = e.target.checked;
+    updateZoomLevels();
+});
+
+function toggleHeatmap(enabled) {
+  heatmapEnabled = enabled;
+  document.getElementById('heatmap-legend').style.display = enabled ? 'block' : 'none';
+  document.getElementById('legend-wrap').style.display = enabled ? 'none' : 'block';
+  
+  const updates = RAW_NODES.map(n => {
+    if (enabled) {
+      // Color based on heat (Green -> Yellow -> Red)
+      const h = n.heat || 0;
+      const r = Math.floor(255 * Math.min(1, h * 2));
+      const g = Math.floor(255 * Math.min(1, (1-h) * 2));
+      const color = `rgb(${r},${g},0)`;
+      return { 
+        id: n.id, 
+        color: { background: color, border: '#fff' }, 
+        size: 15 + (h * 40) 
+      };
+    } else {
+      return { id: n.id, color: n.color, size: n.size };
+    }
+  });
+  nodesDS.update(updates);
+}
+</script>
+<script>
+// Render hyperedges as shaded regions
+const hyperedges = [];
+// afterDrawing passes ctx already transformed to network coordinate space.
+// Draw node positions raw — no manual pan/zoom/DPR math needed.
+network.on('afterDrawing', function(ctx) {
+    hyperedges.forEach(h => {
+        const positions = h.nodes
+            .map(nid => network.getPositions([nid])[nid])
+            .filter(p => p !== undefined);
+        if (positions.length < 2) return;
+        ctx.save();
+        ctx.globalAlpha = 0.12;
+        ctx.fillStyle = '#6366f1';
+        ctx.strokeStyle = '#6366f1';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        // Centroid and expanded hull in network coordinates
+        const cx = positions.reduce((s, p) => s + p.x, 0) / positions.length;
+        const cy = positions.reduce((s, p) => s + p.y, 0) / positions.length;
+        const expanded = positions.map(p => ({
+            x: cx + (p.x - cx) * 1.15,
+            y: cy + (p.y - cy) * 1.15
+        }));
+        ctx.moveTo(expanded[0].x, expanded[0].y);
+        expanded.slice(1).forEach(p => ctx.lineTo(p.x, p.y));
+        ctx.closePath();
+        ctx.fill();
+        ctx.globalAlpha = 0.4;
+        ctx.stroke();
+        // Label
+        ctx.globalAlpha = 0.8;
+        ctx.fillStyle = '#4f46e5';
+        ctx.font = 'bold 11px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(h.label, cx, cy - 5);
+        ctx.restore();
+    });
+});
+</script>
+<div id="schema-modal">
+  <div id="schema-modal-content">
+    <div id="schema-modal-header">
+      <h2 id="schema-title">Schema Details</h2>
+      <span class="close-modal" onclick="closeSchemaModal()">&times;</span>
+    </div>
+    <div id="schema-body"></div>
+  </div>
+</div>
+<script>
+window.onclick = function(event) {
+  const modal = document.getElementById('schema-modal');
+  if (event.target == modal) {
+    modal.style.display = "none";
+  }
+}
+</script>
+</body>
+</html>
