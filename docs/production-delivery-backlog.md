@@ -2,6 +2,8 @@
 
 The tasks below are ordered by dependency. Each item has a measurable exit condition.
 
+**Status checked 26 September 2026:** all 26 delivery items remain open. They require decisions about the production environment, staffed ownership, managed services, or independent security work; they cannot be closed by changes to this local prototype. The role names in the launch plan are suggested functions, not assigned people.
+
 ## Foundation
 
 1. Define versioned database, audit, outbox, queue, identity, secret, and rate-limit interfaces.
@@ -18,7 +20,7 @@ The tasks below are ordered by dependency. Each item has a measurable exit condi
 
 ## Identity
 
-9. Implement OIDC discovery, JWKS caching, signature validation, issuer and audience checks.
+9. Integrate the local RS256/JWKS verifier with the selected production identity provider, including provider discovery, key rotation, issuer/audience policy, and operational failure handling.
 10. Implement principal and project-role mapping with deny-by-default policy evaluation.
 11. Protect every HTTP route and background job with authorization tests.
 12. Add key rotation, token-cache expiry, service identity, and incident runbooks.

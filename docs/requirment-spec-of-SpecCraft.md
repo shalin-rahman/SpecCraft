@@ -1,5 +1,7 @@
 # SpecCraft requirements
 
+This document describes the intended product behavior. It is not a feature-completion report. The local implementation and its known gaps are summarized in the [platform specification](platform-specification.md); production-only work remains open in the [delivery backlog](production-delivery-backlog.md).
+
 ## Product summary
 
 SpecCraft is a project-level knowledge layer for requirements, business rules, workflows, architecture decisions, source-code relationships, tests, evidence, and review findings.

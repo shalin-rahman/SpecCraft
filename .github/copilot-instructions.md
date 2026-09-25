@@ -12,13 +12,15 @@ SpecCraft is intentionally split between a working local reference implementatio
 
 - `src/spec-model.js`: requirement, rule, workflow, and evidence modeling
 - `src/repository-platform.js`: repository scan and boundary safety
-- `src/code-graph.js`: graph construction and conservative symbol extraction
+- `src/parser-adapter.js`: parser registry, Babel AST observations for JavaScript/TypeScript, and lexical Python observations
+- `src/code-graph.js`: parser-driven code graph construction
+- `src/knowledge-graph.js`: typed graph primitives, traversal, traceability coverage, and review transitions; separate from the repository code graph
 - `src/platform-services.js`: drift detection, impact analysis, and context compilation
 - `src/synchronization.js`: revision conflict handling and optimistic concurrency
 - `src/provider-config.js` and `src/provider-router.js`: configuration-driven provider/model routing with failover
 - `src/production-infrastructure.js`: local reference implementations for durable audit, secrets, collaboration, queue, outbox, identity, and rate-limiting contracts
 - `src/server.js` and `src/platform-http.js`: local HTTP API surface for the platform
-- `test/*.test.js`: project validation for spec model, provider behavior, platform endpoints, and infrastructure contracts
+- `test/*.test.js`: project validation for the spec model, provider behavior, parser, graph, HTTP routes, and infrastructure contracts
 
 The product is designed to be local-first and configuration-driven. Managed production services are expressed as contracts and deployment requirements, not hardcoded runtime assumptions.
 
@@ -111,8 +113,16 @@ When asked to implement or review features:
 4. Keep local-first and production-managed concerns separate.
 5. Keep naming and scope aligned with SpecCraft.
 
+For each substantial behavior change or refactor, use the installed Spec Kit workflow before editing code: specify → plan → tasks → analyze → implement → converge. Keep those artifacts in `specs/` and start implementation only after the task list is clear and consistent. Small typo fixes and isolated prose edits do not need a feature spec.
+
+## Documentation voice
+
+Write for the person who needs to use or maintain the project. Prefer specific facts, plain language, and concise explanations over generic product language, repeated summaries, or canned assistant phrasing. Keep plans and proposals clearly labeled, cite official sources for external behavior that may change, and never imply that a person wrote or approved material unless they did.
+
 ## Files to consult first for project context
 
+- `AGENTS.md` (Codex and shared workspace guidance)
+- `docs/workspace-setup.md` (verified setup, commands, and capability findings)
 - `README.md`
 - `docs/platform-specification.md`
 - `docs/production-readiness-specification.md`

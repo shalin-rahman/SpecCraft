@@ -1,8 +1,10 @@
-# Managed stack selection
+# Managed stack recommendation
 
 This project intentionally keeps a local-first reference runtime for development and testability, while the production stack is modeled as explicit contracts that can be swapped behind the same interfaces.
 
-## Recommended production fit
+## Candidate production fit
+
+These are recommendations for evaluation, not approved vendor or infrastructure selections. No production stack, release owner, or deployment target has been confirmed.
 
 - Database: PostgreSQL (managed, with connection pooling and read replicas)
 - Identity: OIDC provider with issuer, audience, and role claims (Entra ID, Auth0, or a comparable provider)
@@ -11,7 +13,7 @@ This project intentionally keeps a local-first reference runtime for development
 - Distributed rate limiting: shared token bucket or sliding-window limiter backed by a managed cache
 - Observability: structured audit log, tracing, request correlation, and centralized metrics
 
-## Why this is the best fit
+## Why these options fit the current requirements
 
 1. PostgreSQL gives stable transactional guarantees for project state, revisions, and audit history.
 2. OIDC is the standard way to enforce issuer, audience, tenant, and role-based authorization without embedding credentials in the app layer.
@@ -21,7 +23,7 @@ This project intentionally keeps a local-first reference runtime for development
 
 ## Contract boundaries
 
-The production stack is selected at the infrastructure edge, not inside the application domain logic. The project continues to support a local JSON/FS-backed implementation for testability, while production code can plug in managed adapters for:
+The production stack should be selected at the infrastructure edge, not inside application domain logic. The local implementations are for development and tests; the production adapters and deployment are not present. A production environment would need managed adapters for:
 
 - durable storage
 - identity verification
@@ -43,4 +45,4 @@ Before launch, the selected stack must satisfy:
 
 ## Summary
 
-The local runtime remains the default implementation for development. The production stack is intentionally fixed as a contract, not as a hardcoded runtime assumption, so deployment choices can be made deliberately and validated without polluting the core domain architecture.
+The local runtime remains the development reference. Review and approve the infrastructure choices against deployment, compliance, cost, and operational needs before treating this recommendation as a production decision.

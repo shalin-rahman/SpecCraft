@@ -1,5 +1,9 @@
 # SpecCraft MVP implementation plan
 
+## Status
+
+The repository contains a static product demo and a local analysis API, but it does not yet deliver the end-to-end membership-closure slice described here. Treat the acceptance criteria below as targets. Current implementation evidence and gaps are in the [platform specification](platform-specification.md) and [knowledge-core plan](semantic-graph-implementation-plan.md). No labelled accuracy evaluation has been completed.
+
 ## Goal
 
 Deliver one complete, reviewable vertical slice for requirements engineering:

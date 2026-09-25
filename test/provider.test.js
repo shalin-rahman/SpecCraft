@@ -35,6 +35,8 @@ test("validates provider config and orders by priority", () => {
   const validated = validateProviderConfig(config);
   assert.deepEqual(validated.providers.map((provider) => provider.id), ["first", "ollama"]);
   assert.throws(() => validateProviderConfig({ version: 1, providers: [] }), /At least/);
+  assert.throws(() => validateProviderConfig({ version: 1, providers: [{ ...config.providers[0], retries: 6 }] }), /retries must be an integer/);
+  assert.throws(() => validateProviderConfig({ version: 1, providers: [{ ...config.providers[0], timeoutMs: 0 }] }), /timeoutMs must be an integer/);
 });
 
 test("falls back to the next provider after a failure", async () => {
@@ -74,4 +76,16 @@ test("records audit events and enforces a request window", () => {
   assert.equal(limiter.allow("user", 1), true);
   assert.equal(limiter.allow("user", 2), false);
   assert.equal(limiter.allow("user", 1001), true);
+});
+
+test("reclaims expired rate-limit buckets and refuses unbounded identities", () => {
+  const limiter = new RateLimiter({ limit: 1, windowMs: 10, maxEntries: 2 });
+  assert.equal(limiter.allow("first", 0), true);
+  assert.equal(limiter.allow("second", 0), true);
+  assert.equal(limiter.allow("third", 0), false);
+  assert.equal(limiter.buckets.size, 2);
+  assert.equal(limiter.allow("third", 11), true);
+  assert.equal(limiter.buckets.size, 1);
+  assert.equal(limiter.allow("fourth", 11), true);
+  assert.equal(limiter.buckets.size, 2);
 });

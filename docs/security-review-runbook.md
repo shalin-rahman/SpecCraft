@@ -24,4 +24,6 @@
 
 Every finding needs severity, confidence, affected revision, reproduction steps, owner, due date, remediation, regression test, and retest result.
 
+The local `SecurityReviewRunner` omits matched text from findings so a credential does not get copied into a report. Its pattern rules are only a development aid; they do not replace a dedicated secret scanner or an independent security review.
+
 The repository contains the runbook, threat model, and local regression tests. A qualified independent security provider must perform the actual penetration test before production deployment.

@@ -29,7 +29,7 @@ The same requirement may now exist in a ticket, a design note, a pull request, a
 
 ## 2. What already exists
 
-Requirements platforms manage structured requirements and traceability. Coding assistants can inspect repositories and change code. Specification-driven development tools provide workflows for moving from a request to a plan, tasks, implementation, and convergence.
+Requirements platforms manage structured requirements and traceability. Coding assistants can inspect repositories and change code. Specification-driven development tools provide workflows for moving from a request through planning, implementation, and review. The current [GitHub Spec Kit documentation](https://github.github.com/spec-kit/) and [OpenSpec documentation](https://openspec.dev/) describe two such workflows; their features and supported integrations can change, so check the upstream docs before planning an adapter.
 
 These tools are useful, but they solve different parts of the problem:
 

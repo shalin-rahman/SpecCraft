@@ -1,3 +1,5 @@
+import { traverseKnowledgeGraph } from "./knowledge-graph.js";
+
 const validStatuses = new Set(["draft", "proposed", "approved", "deprecated"]);
 const validPriorities = new Set(["low", "medium", "high", "critical"]);
 const ambiguousTerms = /\b(quickly|normally|soon|appropriate|authorized|easy|secure)\b/gi;
@@ -85,95 +87,67 @@ export function analyzeRequirement(requirement) {
   return findings;
 }
 
-function collectLinkedArtifacts(traceLinks, startId) {
-  const adjacency = new Map();
-  const allLinks = Array.isArray(traceLinks) ? traceLinks : [];
-
-  for (const link of allLinks) {
-    const from = link.from;
-    const to = link.to;
-    if (!from || !to) continue;
-
-    const left = adjacency.get(from) ?? [];
-    left.push(link);
-    adjacency.set(from, left);
-
-    const right = adjacency.get(to) ?? [];
-    right.push(link);
-    adjacency.set(to, right);
-  }
-
-  const queue = [{ id: startId, path: [startId] }];
-  const seen = new Set([startId]);
-  const artifacts = new Map();
-
-  while (queue.length > 0) {
-    const current = queue.shift();
-    const links = adjacency.get(current.id) ?? [];
-
-    for (const link of links) {
-      const nextId = link.from === current.id ? link.to : link.from;
-      if (nextId === current.id || seen.has(nextId)) continue;
-
-      const path = [...current.path, nextId];
-      seen.add(nextId);
-      const detail = {
-        id: nextId,
-        relationship: link.type,
-        path,
-        evidence: Array.isArray(link.evidence) ? [...link.evidence] : [],
-        confidence: link.confidence ?? "medium"
-      };
-      artifacts.set(nextId, detail);
-      queue.push({ id: nextId, path });
-    }
-  }
-
-  return [...artifacts.values()];
-}
-
 export function compileContext(project, requirementId) {
   const requirement = project.requirements.find((item) => item.id === requirementId);
   if (!requirement) {
     throw new Error(`Requirement not found: ${requirementId}`);
   }
 
+  const graph = buildProjectTraceGraph(project);
+  const traversal = traverseKnowledgeGraph(graph, requirementId);
   const relatedLinks = project.traceLinks?.filter(
     (item) => item.from === requirementId || item.to === requirementId
   ) ?? [];
+  const relatedNodes = traversal.map((item) => item.node);
+  const rules = project.rules?.filter((item) => item.requirementId === requirementId) ?? [];
+  const workflows = project.workflows?.filter((item) => item.requirementId === requirementId) ?? [];
+  const apiContracts = relatedNodes.filter((item) => item.type === "api");
+  const relevantCode = relatedNodes.filter((item) =>
+    ["file", "module", "class", "function", "method", "symbol"].includes(item.type)
+  );
+  const tests = relatedNodes.filter((item) => item.type === "test");
+  const decisions = relatedNodes.filter((item) => item.type === "decision");
+  const evidence = [...new Set([
+    ...relatedNodes.flatMap((item) => item.evidence ?? []),
+    ...traversal.flatMap((item) => item.evidence)
+  ])];
+  const findings = analyzeRequirement(requirement);
+  const unresolvedQuestions = [
+    ...(!relevantCode.length ? ["Which code implements this requirement?"] : []),
+    ...(!tests.length ? ["Which tests verify this requirement?"] : [])
+  ];
 
   const contextPackage = {
     task: requirement.title,
-    requirements: project.requirements.filter((item) => item.id === requirementId),
-    constraints: project.rules?.filter((item) => item.requirementId === requirementId) ?? [],
-    workflows: project.workflows?.filter((item) => item.requirementId === requirementId) ?? [],
-    apiContracts: relatedLinks.filter((item) => item.type === "implements" || item.type === "exposes"),
-    relevantCode: relatedLinks.filter((item) => item.type === "implemented-in" || item.type === "implemented-by"),
-    tests: relatedLinks.filter((item) => item.type === "verified-by" || item.type === "tests"),
-    decisions: [],
-    findings: analyzeRequirement(requirement),
-    evidence: [...new Set(relatedLinks.flatMap((item) => item.evidence ?? []))],
-    provenance: relatedLinks.map((item) => ({
-      relation: item.type,
-      from: item.from,
-      to: item.to,
-      evidence: item.evidence ?? []
+    requirements: [requirement],
+    constraints: rules,
+    workflows,
+    apiContracts,
+    relevantCode,
+    tests,
+    decisions,
+    findings,
+    evidence,
+    unresolvedQuestions,
+    provenance: traversal.map((item) => ({
+      path: item.path,
+      relationships: item.relationships,
+      evidence: item.evidence,
+      confidence: item.confidence,
+      freshness: item.freshness,
+      reviewState: item.reviewState
     })),
-    contextRevision: `${requirementId}:${project.version ?? "0.1.0"}`
+    contextRevision: graph.revision
   };
 
   return {
     requirement,
-    rules: project.rules?.filter((item) => item.requirementId === requirementId) ?? [],
-    workflows: project.workflows?.filter((item) => item.requirementId === requirementId) ?? [],
+    rules,
+    workflows,
     links: relatedLinks,
-    findings: analyzeRequirement(requirement),
+    findings,
     contextPackage,
-    relatedArtifacts: relatedLinks.map((item) => ({
-      id: item.to,
-      relationship: item.type,
-      evidence: item.evidence ?? []
-    }))
+    relatedArtifacts: traversal
   };
 }
 
@@ -181,7 +155,7 @@ export function calculateImpact(project, changedId) {
   const directLinks = project.traceLinks?.filter(
     (item) => item.from === changedId || item.to === changedId
   ) ?? [];
-  const artifacts = collectLinkedArtifacts(project.traceLinks ?? [], changedId);
+  const artifacts = traverseKnowledgeGraph(buildProjectTraceGraph(project), changedId);
   const affected = [...new Set(artifacts.map((item) => item.id))].filter((id) => id !== changedId);
 
   return {
@@ -192,6 +166,46 @@ export function calculateImpact(project, changedId) {
     message: affected.length > 0
       ? `${affected.length} connected artifact${affected.length === 1 ? "" : "s"} may need review.`
       : "No connected artifacts were found."
+  };
+}
+
+function buildProjectTraceGraph(project) {
+  const nodes = new Map();
+  const addNode = (node) => {
+    if (typeof node?.id !== "string" || !node.id) return;
+    if (!nodes.has(node.id)) nodes.set(node.id, { evidence: [], confidence: "medium", ...node });
+  };
+  const inferType = (id) => {
+    if (/^REQ[-_]/i.test(id)) return "requirement";
+    if (/^(BR|RULE)[-_]/i.test(id)) return "rule";
+    if (/^WF[-_]/i.test(id)) return "workflow";
+    if (/^(API)[-_]/i.test(id)) return "api";
+    if (/^(TEST|TST)[-_]/i.test(id) || /(^|\/|\\)test(s)?([/\\.]|$)/i.test(id)) return "test";
+    if (/\.(js|mjs|cjs|ts|tsx|py)$/i.test(id)) return "file";
+    return "symbol";
+  };
+
+  for (const requirement of project.requirements ?? []) {
+    addNode({ ...requirement, type: "requirement" });
+  }
+  for (const [collection, type] of [
+    ["rules", "rule"],
+    ["workflows", "workflow"],
+    ["apiContracts", "api"],
+    ["permissions", "permission"],
+    ["decisions", "decision"]
+  ]) {
+    for (const item of project[collection] ?? []) addNode({ ...item, type });
+  }
+  for (const link of project.traceLinks ?? []) {
+    addNode({ id: link.from, type: inferType(link.from), evidence: [] });
+    addNode({ id: link.to, type: inferType(link.to), evidence: [] });
+  }
+
+  return {
+    revision: String(project.version ?? "0.1.0"),
+    nodes: [...nodes.values()],
+    edges: project.traceLinks ?? []
   };
 }
 

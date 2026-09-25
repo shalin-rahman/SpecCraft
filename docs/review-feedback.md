@@ -1,1065 +1,298 @@
-Reviewed GitHub repository [SpecCraft repository](https://github.com/shalin-rahman/SpecCraft?utm_source=chatgpt.com)
+# SpecCraft implementation and review principles
 
-The important things is:
+This document records the engineering direction for the existing SpecCraft prototype. It describes intended behavior and working rules; it is not a report that those capabilities are already complete. Use the implementation plan and platform specification for the current verified state.
 
-> **The repository has moved beyond a concept/demo and now contains a credible reference implementation of several core foundations. But it still does not implement the full SpecCraft architecture we designed in the broader conversations.**
-> 
-> The biggest missing piece is still the **semantic synchronization/knowledge layer between canonical specifications, code, tests, evidence, and AI agents**.
-
-## 1. What we originally designed vs what is actually implemented
-Across the SpecCraft conversations, the intended system became roughly:
-
-```
-                         HUMAN
-                           │
-                           ▼
-                 Natural-language intent
-                           │
-                           ▼
-                 ┌─────────────────────┐
-                 │   SpecCraft Core    │
-                 │                     │
-                 │ Canonical Spec/IR   │
-                 │ Validation          │
-                 │ Provenance          │
-                 │ Review/Approval     │
-                 │ Decision Records    │
-                 └─────────┬───────────┘
-                           │
-                    Specification Graph
-                           │
-            ┌──────────────┼──────────────┐
-            ▼              ▼              ▼
-       Requirements     Rules         Workflows
-            │              │              │
-            └──────────────┼──────────────┘
-                           ▼
-                       API / Data
-                           │
-                           ▼
-                      Code Graph
-                           │
-                           ▼
-                         Tests
-                           │
-                           ▼
-                       Evidence
-                           │
-                           ▼
-                  Continuous Sync
-                           ↕
-                 AI Agents / Editors
-          Codex · Claude · Copilot · Cursor
-                  Kiro · MCP · CLI
-```
-The repository currently implements a meaningful **subset** of that.
+The project should grow from its working code in small, reviewable steps. Preserve behavior that already works, check the relevant tests and specifications before changing a contract, and keep current behavior, target behavior, and remaining gaps visible as the implementation evolves.
 
 ---
 
-# 2. Current implementation status
-| Capability                       | Current state                            | Assessment |
-| -------------------------------- | ---------------------------------------- | ---------- |
-| Requirement model                | Implemented                              | 🟢         |
-| Requirement validation           | Implemented, basic                       | 🟢/🟡      |
-| Ambiguity detection              | Implemented, heuristic                   | 🟡         |
-| Evidence/provenance concept      | Partially implemented                    | 🟡         |
-| Rules                            | Basic data structure                     | 🟡         |
-| Workflows                        | Basic data structure                     | 🟡         |
-| Trace links                      | Implemented, basic                       | 🟢/🟡      |
-| Specification graph              | Very limited                             | 🔴         |
-| Code graph                       | Basic file/symbol graph                  | 🟡         |
-| AST-based analysis               | Not actually implemented                 | 🔴         |
-| Repository scanning              | Implemented                              | 🟢         |
-| Brownfield reconstruction        | Basic candidate generation               | 🟡         |
-| Requirements-from-code inference | Very primitive                           | 🔴         |
-| Test discovery/mapping           | Not meaningfully implemented             | 🔴         |
-| Requirement → code traceability  | Data model only                          | 🔴         |
-| Code → requirement traceability  | Not implemented                          | 🔴         |
-| Requirement → test traceability  | Data model only                          | 🔴         |
-| Multi-hop impact analysis        | Not implemented                          | 🔴         |
-| Drift detection                  | File hash level                          | 🟡         |
-| Semantic drift                   | Not implemented                          | 🔴         |
-| Context compilation              | Basic query/filter                       | 🟡         |
-| AI provider abstraction          | Implemented                              | 🟢         |
-| Agent adapters                   | Interface-level foundation               | 🟡         |
-| MCP                              | Not implemented as a real adapter        | 🔴         |
-| Persistent canonical knowledge   | Local foundations only                   | 🔴/🟡      |
-| Revision/conflict handling       | Implemented foundation                   | 🟢         |
-| Proposal workflow                | Basic                                    | 🟡         |
-| Human approval workflow          | Incomplete                               | 🔴         |
-| Audit                            | Local + reference durable implementation | 🟢/🟡      |
-| Authentication                   | Hook/reference                           | 🟡         |
-| Authorization                    | Reference implementation                 | 🟡         |
-| Multi-tenancy                    | Architectural foundation                 | 🔴         |
-| Durable DB                       | Adapter/reference                        | 🟡         |
-| Queue/outbox                     | Reference FS implementation              | 🟡         |
-| Production infrastructure        | Significant foundation                   | 🟡         |
-| Evaluation framework             | Basic                                    | 🟡         |
-| Security/threat model            | Documented                               | 🟢         |
-| Product/UI                       | MVP/demo                                 | 🟡         |
-| Full SpecCraft product           | Not yet                                  | 🔴         |
+# 1. Authoritative sources
+
+Before making changes, understand these sources in this order:
+
+1. Existing source code
+2. Existing tests
+3. Existing specifications
+4. Existing architecture/design documentation
+5. Existing research/presentation material
+6. Existing README/user documentation
+7. Existing implementation plans
+
+Do not assume that documentation is automatically correct.
+
+Do not assume that code is automatically the intended architecture.
+
+Instead determine:
+
+```text
+Current implementation
+        +
+Current specification
+        +
+Current architecture
+        +
+Current tests
+        ↓
+Current verified state
+```
+
+Then compare that with the intended SpecCraft architecture.
 
 ---
 
-# 3. The good news: the repo is structurally much better than the earlier prototype
-The repository now has a reasonably coherent separation:
+# 2. Important distinction: current state vs target state
 
+Maintain an explicit distinction between:
+
+### CURRENT
+
+What the repository actually implements today.
+
+### TARGET
+
+What the SpecCraft architecture intends to provide.
+
+### GAP
+
+What is missing between CURRENT and TARGET.
+
+Use this model:
+
+```text
+CURRENT
+   ↓
+Verified baseline
+   ↓
+Gap analysis
+   ↓
+Target capability
+   ↓
+Incremental implementation
+   ↓
+Verification
 ```
-src/
-├── spec-model.js
-├── synchronization.js
-├── repository-platform.js
-├── code-graph.js
-├── parser-adapter.js
-├── platform-services.js
-├── platform-adapter.js
-├── platform-http.js
-├── provider-config.js
-├── provider-router.js
-├── production-infrastructure.js
-├── audit-rate-limit.js
-├── benchmark.js
-└── server.js
-```
-That separation is directionally correct.
 
-In particular, these are good architectural decisions:
+Never silently pretend a target capability already exists.
 
-### Canonical model
-`spec-model.js` establishes:
-
-- requirement
-- status
-- priority
-- evidence
-- links
-- trace links
-- review findings
-- context
-- impact
-That aligns with the requirement we developed in the conversations.
-
-### Deterministic repository analysis
-`repository-platform.js` deliberately:
-
-- scopes the repository
-- ignores `.git`
-- ignores dependencies
-- ignores build output
-- ignores common secret files
-- limits file size
-- limits file count
-- hashes source files
-- doesn't execute repository code
-That is exactly the right security posture for an initial brownfield analyzer.
-
-### Candidate provenance
-This is particularly important:
-
-```
-{
-    id: `CAND-${symbol.id}`,
-    ...
-    source: symbol.evidence,
-    confidence: "low",
-    reviewState: "candidate"
-}
-```
-This follows one of the most important principles from our earlier discussions:
-
-> **Observed implementation must not automatically become authoritative business intent.**
-The repository's own specification explicitly says this as well: evidence first, inference second, human approval before canonical knowledge.
-
-That's a strong architectural choice.
-
----
-
-# 4. The biggest architectural problem: the "graph" isn't yet the SpecCraft graph
-Current `code-graph.js` essentially creates:
-
-```
-File
- └── defines → Symbol
-```
 For example:
 
+```text
+File hash changed
 ```
-membership.js
-      │
-      └── defines
-             ↓
-      closeMembership()
-```
-That's useful, but it isn't yet the graph we designed.
 
-The intended graph needs to look more like:
+must not be described as:
 
+```text
+Semantic specification drift detected
 ```
-REQ-001
-  │
-  ├── governed-by ──→ BR-001
-  │                     │
-  │                     └── constrains ──→ WF-001
-  │                                           │
-  │                                           └── exposes ──→ API-001
-  │                                                               │
-  │                                                               └── implemented-by
-  │                                                                      ↓
-  │                                                               MembershipService
-  │                                                                      │
-  │                                                                      ├── calls → Repository
-  │                                                                      │
-  │                                                                      └── emits → Event
-  │
-  ├── implemented-by ──→ closeMembership()
-  │
-  └── verified-by ──→ test_close_membership
-```
-And then:
 
+unless the implementation actually performs semantic analysis.
+
+Likewise:
+
+```text
+File → Symbol
 ```
-Requirement
+
+must not be described as a complete knowledge graph.
+
+---
+
+# 3. First action — do not modify code
+
+Before changing anything, perform a complete repository assessment.
+
+Inspect:
+
+* repository structure;
+* source files;
+* tests;
+* package configuration;
+* scripts;
+* README;
+* specifications;
+* architecture documentation;
+* API documentation;
+* implementation plans;
+* diagrams;
+* configuration;
+* persistence adapters;
+* provider abstractions;
+* security boundaries.
+
+Identify:
+
+* implemented features;
+* partial features;
+* placeholders;
+* duplicated code;
+* dead code;
+* inconsistent terminology;
+* stale documentation;
+* missing tests;
+* misleading tests;
+* architectural violations;
+* public API contracts;
+* compatibility constraints.
+
+Produce an internal matrix:
+
+| Area             | Current Implementation | Tests | Specification | Gap | Planned Change |
+| ---------------- | ---------------------- | ----- | ------------- | --- | -------------- |
+| Knowledge model  |                        |       |               |     |                |
+| Requirements     |                        |       |               |     |                |
+| Rules            |                        |       |               |     |                |
+| Workflows        |                        |       |               |     |                |
+| Graph            |                        |       |               |     |                |
+| Code graph       |                        |       |               |     |                |
+| Traceability     |                        |       |               |     |                |
+| Impact analysis  |                        |       |               |     |                |
+| Drift            |                        |       |               |     |                |
+| Reconstruction   |                        |       |               |     |                |
+| Synchronization  |                        |       |               |     |                |
+| Provenance       |                        |       |               |     |                |
+| Review lifecycle |                        |       |               |     |                |
+| Context compiler |                        |       |               |     |                |
+| Providers        |                        |       |               |     |                |
+| Agents/MCP       |                        |       |               |     |                |
+| Persistence      |                        |       |               |     |                |
+| Security         |                        |       |               |     |                |
+| Testing          |                        |       |               |     |                |
+
+Do not start implementation until this assessment is understood.
+
+---
+
+# 4. Establish a baseline
+
+Before modifying code:
+
+* run the complete existing test suite;
+* run available lint/static checks;
+* run build checks;
+* exercise existing APIs;
+* verify repository scanning;
+* verify candidate reconstruction;
+* verify drift detection;
+* verify context compilation;
+* verify proposal/revision behavior.
+
+Record the baseline.
+
+Separate:
+
+```text
+Existing failure
+```
+
+from:
+
+```text
+Regression introduced by our change
+```
+
+Never hide a pre-existing failure.
+
+---
+
+# 5. Non-negotiable change rule
+
+Every implementation change must follow:
+
+```text
+Understand
     ↓
-Rule
+Specify intended behavior
     ↓
-Workflow
+Identify affected components
     ↓
-API
+Check consumers/dependencies
     ↓
-Code
+Make smallest safe change
     ↓
-Test
+Run focused tests
     ↓
-Evidence
-```
-The repository documentation actually specifies this richer model, including edges such as:
-
-- `defines`
-- `imports`
-- `tests`
-- `implements`
-But the current `buildCodeGraph()` only produces `defines`.
-
-So there is a significant **specification-to-implementation gap inside the repository itself**.
-
----
-
-# 5. The current brownfield reconstruction is far too shallow
-Currently:
-
-```
-reconstructCandidates(analysis)
-```
-essentially does:
-
-```
-every symbol
-      ↓
-"Document <symbol>"
-      ↓
-candidate requirement
-```
-So:
-
-```
-function closeMembership()
-```
-becomes something like:
-
-```
-Document closeMembership
-Candidate knowledge inferred from service.py:1
-confidence = low
-```
-That is intentionally conservative, which is good.
-
-But it isn't yet **specification reconstruction**.
-
-The architecture we discussed requires something closer to:
-
-```
-Repository
-    │
-    ├── source code
-    ├── tests
-    ├── API definitions
-    ├── schemas
-    ├── configuration
-    ├── documentation
-    ├── Git history
-    └── existing specifications
-             │
-             ▼
-       Evidence extraction
-             │
-             ▼
-       Semantic candidates
-             │
-             ├── Requirement candidates
-             ├── Rule candidates
-             ├── Workflow candidates
-             ├── API candidates
-             ├── Permission candidates
-             ├── Architecture candidates
-             └── Test/verification candidates
-             │
-             ▼
-       Confidence + provenance
-             │
-             ▼
-       Human review
-             │
-             ▼
-       Canonical specification
-```
-That is one of the most important future implementation areas.
-
----
-
-# 6. Drift detection is currently syntactic, not semantic
-Current drift:
-
-```
-previous hash
-       ↓
-current hash
-       ↓
-added / removed / changed
-```
-This is useful.
-
-But it only tells us:
-
-> `service.py` changed.
-It doesn't tell us:
-
-> `REQ-001` may no longer be satisfied because `closeMembership()` changed its state transition.
-The eventual model should classify drift:
-
-```
-FILE_CHANGED
+Run regression tests
     ↓
-SYMBOL_CHANGED
+Review diff
     ↓
-TRACE_LINK_AFFECTED
+Update specifications
     ↓
-REQUIREMENT_POTENTIALLY_AFFECTED
+Update documentation
     ↓
-TEST_COVERAGE_AFFECTED
+Verify consistency
 ```
-For example:
 
-```
-BR-017 changed
-     │
-     ├── WF-004 affected
-     ├── API-12 affected
-     ├── MembershipService affected
-     ├── test_membership.py affected
-     └── REQ-031 potentially stale
-```
-That is where the **specification graph + code graph** become genuinely valuable.
+Only then proceed to the next change.
 
 ---
 
-# 7. Impact analysis is also only first-degree today
-Current `calculateImpact()` gets direct trace links.
+# 6. Never make a large unverified change
 
-So:
+Avoid changes such as:
 
-```
-REQ-001
-   ├── BR-001
-   └── test/a.js
-```
-returns:
+* replacing the entire graph implementation;
+* moving the entire source tree;
+* rewriting all domain models;
+* replacing all persistence;
+* replacing all parser logic;
+* changing every API at once;
+* changing public contracts without migration;
+* deleting old implementations before proving the replacement works.
 
-```
-BR-001
-test/a.js
-```
-But the intended system needs transitive graph traversal.
+Instead use:
 
-Example:
-
-```
-REQ-001
-  ↓
-BR-001
-  ↓
-WF-002
-  ↓
-API-004
-  ↓
-ServiceA
-  ↓
-RepositoryB
-  ↓
-Test-019
-```
-Changing `REQ-001` should potentially produce a candidate impact set containing the downstream artifacts, with:
-
-- path
-- relationship
-- confidence
-- evidence
-- freshness
-- review status
-And ideally explain **why** each artifact was selected.
-
----
-
-# 8. Context compilation is currently nowhere near the intended Context Compiler
-Current repository context essentially does:
-
-```
-query string
-     ↓
-node ID/name substring match
-     ↓
-return matching nodes + nearby edges
-```
-That is a useful prototype.
-
-But our earlier design for SpecCraft's context compiler was substantially richer:
-
-```
-Agent asks:
-"Implement membership closure validation"
-                │
-                ▼
-       Context Compiler
-                │
-     ┌──────────┼──────────┐
-     ▼          ▼          ▼
- Requirements Rules     Workflows
-     │          │          │
-     └──────────┼──────────┘
-                ▼
-             APIs
-                │
-                ▼
-             Code
-                │
-                ▼
-             Tests
-                │
-                ▼
-           Decisions
-                │
-                ▼
-             Evidence
-```
-Then produce:
-
-```
-ContextPackage
-├── task
-├── requirements
-├── constraints
-├── business rules
-├── workflows
-├── API contracts
-├── relevant code
-├── tests
-├── architecture decisions
-├── findings
-├── unresolved questions
-├── evidence
-├── provenance
-└── context revision
-```
-This should be one of the central components of SpecCraft.
-
----
-
-# 9. Synchronization is a foundation, but not yet synchronization
-`KnowledgeStore` is a good start.
-
-This:
-
-```
-expectedRevision
-```
-and:
-
-```
-RevisionConflictError
-```
-give us optimistic concurrency.
-
-And the typed operation:
-
-```
-append
-```
-is much safer than accepting arbitrary functions or executable transformations.
-
-That's good.
-
-But currently synchronization is essentially:
-
-```
-proposal
-   ↓
-revision check
-   ↓
-append
-```
-The intended SpecCraft synchronization engine is:
-
-```
-                    ┌───────────────┐
-                    │ Canonical Spec│
-                    └───────┬───────┘
-                            ↕
-                     Sync Engine
-                            ↕
-                    ┌───────┴───────┐
-                    │               │
-                Code Graph       Test Graph
-                    │               │
-                    └───────┬───────┘
-                            ↕
-                      Evidence Graph
-```
-with:
-
-```
-detect
-→ classify
-→ propose
-→ explain
-→ review
-→ approve/reject
-→ apply
-→ verify
-→ record evidence
-```
-That lifecycle is not implemented yet.
-
----
-
-# 10. Human approval is not yet a real state machine
-The repository has:
-
-```
-draft
-proposed
-approved
-deprecated
-```
-and:
-
-```
-pending-review
-```
-But the actual lifecycle needs to be much more explicit.
-
-I'd expect something like:
-
-```
-DISCOVERED
+```text
+Characterize
     ↓
-CANDIDATE
+Introduce
     ↓
-UNDER_REVIEW
-    ├──────────────┐
-    ↓              ↓
-ACCEPTED        REJECTED
+Migrate
     ↓
-PROPOSED
+Verify
     ↓
-APPROVED
+Deprecate
     ↓
-CANONICAL
-    ↓
-VERIFIED
+Remove
 ```
-And separately:
-
-```
-STALE
-CONFLICTED
-SUPERSEDED
-DEPRECATED
-```
-This matters because **candidate knowledge and authoritative knowledge are fundamentally different classes of information**.
 
 ---
 
-# 11. The repository's own specification is ahead of the implementation
-This is one of the most important findings.
+# 7. Preserve existing working functionality
 
-For example, `docs/platform-specification.md` describes a code graph containing:
+The current repository already contains useful implementation foundations.
 
-> file, symbol, test, and requirement nodes with typed edges such as `defines`, `imports`, `tests`, and `implements`.
-But the implementation currently only creates:
+Preserve and improve:
 
-```
-file → defines → symbol
-```
-Likewise, the requirements document says the canonical chain is:
+* specification model;
+* requirement analysis;
+* evidence/provenance;
+* repository scanning;
+* candidate reconstruction;
+* code graph;
+* drift detection;
+* context compilation;
+* revision-based proposals;
+* provider abstraction;
+* audit foundations;
+* security foundations;
+* production-oriented adapters.
 
-```
-Requirement → Rule → Workflow → API → Code → Test → Evidence
-```
-but the implementation doesn't yet have first-class models for all of those.
+Do not remove these merely because they are incomplete.
 
-So we now have:
-
-```
-DOCUMENTED ARCHITECTURE
-        │
-        │
-        ▼
-   IMPLEMENTATION
-        │
-        ├── implemented
-        ├── partially implemented
-        └── still conceptual
-```
-SpecCraft should now explicitly track this difference.
-
-That itself is a perfect use case for SpecCraft.
+Improve them incrementally.
 
 ---
 
-# 12. There is also a test-structure issue
-I noticed `test/spec-model.test.js` contains nested `test()` declarations inside another test:
+# 8. Canonical specification model
 
-```
-test("summarizes project status and evidence", () => {
-   ...
-   test("finds ambiguous and incomplete requirement language", () => {
-      ...
-   });
+The system should progressively support first-class knowledge entities such as:
 
-   test("compiles context and reports connected impact", () => {
-      ...
-   });
-
-   assert.deepEqual(...)
-});
-```
-Those tests should be top-level tests rather than nested inside the summary test.
-
-Even if Node's test runner handles the nesting, it makes test ownership/reporting unnecessarily confusing and weakens the test structure.
-
-The intended structure should be:
-
-```
-test(...)
-test(...)
-test(...)
-test(...)
-test(...)
-```
-with each behavior independently reported.
-
----
-
-# 13. The parser architecture is currently misleading
-There is a `ParserRegistry`, which is good architectural preparation:
-
-```
-ParserRegistry
-```
-But the actual production graph currently uses regex-based extraction in:
-
-```
-code-graph.js
-```
-rather than the parser abstraction.
-
-That's a significant gap.
-
-The intended architecture should be:
-
-```
-Repository
-   ↓
-Language detection
-   ↓
-ParserRegistry
-   ↓
-Language parser
-   ↓
-AST
-   ↓
-Normalized Code Model
-   ↓
-Code Graph
-```
-not:
-
-```
-Repository
-   ↓
-Regex
-   ↓
-Symbols
-```
-Regex is acceptable as the conservative MVP fallback, but the system should make this explicit.
-
----
-
-# 14. Graphify fits here — but it should not become the canonical model
-This connects directly to our earlier Graphify discussion.
-
-I would preserve the architectural boundary:
-
-```
-                    SpecCraft
-                       │
-             Canonical Specification
-                       │
-                Specification Graph
-                       │
-                 Traceability
-                       │
-             ┌─────────┴─────────┐
-             │                   │
-        Code Graph          External Graph
-             │                   │
-        AST/parser         Graphify/etc.
-```
-Graphify or another code-graph technology can provide **implementation intelligence**.
-
-It should not become the authoritative specification store.
-
-The distinction should remain:
-
-```
-SpecCraft Canonical Graph
-        ≠
-Code Graph
-        ≠
-Agent Memory
-```
-They are related knowledge layers.
-
----
-
-# 15. AI provider support is a useful foundation, but AI isn't yet integrated into the knowledge lifecycle
-The provider router has good fundamentals:
-
-- provider configuration
-- priorities
-- fallback
-- retries
-- timeout
-- endpoint allowlisting
-- local Ollama support
-- secret environment lookup
-That's valuable.
-
-But currently:
-
-```
-Agent/AI
-   ↓
-provider.complete()
-```
-is essentially an isolated capability.
-
-The intended architecture is:
-
-```
-Agent
-   ↓
-SpecCraft Adapter
-   ↓
-Context Compiler
-   ↓
-Canonical Knowledge
-   ↓
-AI reasoning
-   ↓
-Proposal
-   ↓
-Evidence
-   ↓
-Human Review
-   ↓
-Canonical Knowledge
-```
-In other words:
-
-> **The model should reason over SpecCraft; it should not become SpecCraft.**
-That distinction is central to the product.
-
----
-
-# 16. Agent independence is not implemented yet
-The documentation says adapters should expose:
-
-```
-getProjectSnapshot
-getContext
-submitProposal
-getFindings
-```
-The `PlatformAdapter` establishes the beginning of that contract.
-
-But we don't yet have real integrations for:
-
-- Codex
-- Claude
-- Copilot
-- Cursor
-- Kiro
-- MCP
-- IDE plugins
-- CLI workflow
-So today the architecture is **adapter-ready**, rather than genuinely agent-independent in operation.
-
-That is an important distinction.
-
----
-
-# 17. Production infrastructure has progressed significantly
-This part is stronger than the core semantic layer.
-
-The repository contains foundations for:
-
-### Audit
-`DurableAuditLog`
-
-with:
-
-```
-sequence
-previousHash
-hash
-```
-creating a hash chain.
-
-### Collaboration
-`FileCollaborationStore`
-
-with revision checking.
-
-### Jobs
-`FileJobQueue`
-
-with:
-
-- idempotency
-- attempts
-- leasing
-- retry
-- dead-letter state
-
-### Outbox
-`Outbox`
-
-### Identity
-`ManagedIdentityProvider`
-
-### Authorization
-`ManagedAuthorizationService`
-
-### Secrets
-`SecretManager`
-`VaultSecretProvider`
-
-### Distributed rate limiting
-`DistributedRateLimiter`
-
-### Security review
-`SecurityReviewRunner`
-
-### Managed database boundary
-`ManagedDatabaseAdapter`
-
-These are useful infrastructure contracts.
-
-But they are mostly **reference adapters**, not production infrastructure.
-
-The repository itself correctly documents this.
-
----
-
-# 18. One security concern needs attention in the identity implementation
-There is a particularly important point in `ManagedIdentityService`.
-
-The JWT code supports HS256-style verification when a signing secret is supplied, but the managed/JWKS path is not a complete asymmetric JWT verification implementation.
-
-The architecture documents OIDC/JWKS, but the current implementation should not be considered a complete production-grade OIDC verifier.
-
-The production contract correctly requires:
-
-```
-signature
-issuer
-audience
-expiry
-not-before
-token type
-key rotation
-```
-and the implementation still needs to meet that contract completely.
-
-So this should remain explicitly marked as a **reference security adapter**, not production authentication.
-
----
-
-# 19. There is a deeper concurrency issue in the file-backed infrastructure
-Several reference implementations follow:
-
-```
-read file
-   ↓
-modify in memory
-   ↓
-write file
-```
-For example:
-
-```
-FileJobQueue
-FileCollaborationStore
-ProjectRepository
-```
-This is acceptable for local reference testing.
-
-But it isn't equivalent to transactional concurrency.
-
-Two processes can potentially do:
-
-```
-Worker A: read revision 5
-Worker B: read revision 5
-
-Worker A: write revision 6
-Worker B: write revision 6
-```
-The production specification correctly calls for a database transaction / optimistic concurrency mechanism.
-
-So again:
-
-**the architecture is correct; the current implementation is still reference infrastructure.**
-
----
-
-# 20. The production documentation is actually quite disciplined
-I particularly like that the repository doesn't pretend the reference implementation is production-ready.
-
-The README explicitly states that production still requires:
-
-- managed identity
-- durable managed storage
-- distributed rate limiting
-- external secret management
-- encryption
-- independent security review
-That matches the broader architecture.
-
-This is much better than calling a local Node prototype a production platform.
-
----
-
-# 21. What I would NOT do now
-Based on all the conversations, I would **not** immediately add:
-
-```
-50 language parsers
-20 IDE plugins
-full SaaS UI
-autonomous coding agent
-massive microservice architecture
-```
-That would take SpecCraft away from its actual differentiator.
-
-The core needs to become correct first.
-
----
-
-# 22. The next architectural milestone should be this
-I would now make **SpecCraft Knowledge Core v2** the primary target.
-
-```
-                    ┌──────────────────────┐
-                    │     Human Intent      │
-                    └──────────┬───────────┘
-                               │
-                               ▼
-                    ┌──────────────────────┐
-                    │ Canonical Spec Model │
-                    │                      │
-                    │ Requirement           │
-                    │ Rule                  │
-                    │ Workflow              │
-                    │ API                   │
-                    │ Permission            │
-                    │ Decision              │
-                    │ Test                  │
-                    │ Evidence              │
-                    └──────────┬───────────┘
-                               │
-                               ▼
-                    ┌──────────────────────┐
-                    │ Specification Graph  │
-                    └──────────┬───────────┘
-                               │
-                 ┌─────────────┼──────────────┐
-                 ▼             ▼              ▼
-             Code Graph     Test Graph    Evidence Graph
-                 │             │              │
-                 └─────────────┼──────────────┘
-                               │
-                               ▼
-                     ┌──────────────────┐
-                     │ Sync / Analysis  │
-                     │                  │
-                     │ Drift            │
-                     │ Impact           │
-                     │ Contradiction    │
-                     │ Coverage         │
-                     │ Staleness        │
-                     └────────┬─────────┘
-                              │
-                              ▼
-                     ┌──────────────────┐
-                     │ Context Compiler │
-                     └────────┬─────────┘
-                              │
-                              ▼
-                    ┌────────────────────┐
-                    │ Agents / Editors   │
-                    │                    │
-                    │ Codex              │
-                    │ Claude             │
-                    │ Copilot            │
-                    │ Cursor             │
-                    │ Kiro               │
-                    │ MCP                │
-                    └─────────┬──────────┘
-                              │
-                              ▼
-                         Proposal
-                              │
-                              ▼
-                     Human Review/Approve
-                              │
-                              ▼
-                      Canonical Revision
-```
-That is the product.
-
----
-
-# 23. Concrete implementation gaps I would create as the next backlog
-
-### P0 — Canonical knowledge model
-Replace the current loose objects with first-class entities:
-
-```
+```text
 Requirement
 Rule
 Workflow
-WorkflowState
+WorkflowStep
 APIContract
 Permission
 ArchitectureDecision
@@ -1068,13 +301,13 @@ Test
 Evidence
 Finding
 TraceLink
-ContextPackage
 ChangeProposal
 ReviewDecision
 ```
-Every entity should have:
 
-```
+Where appropriate, common metadata should include:
+
+```text
 id
 type
 version
@@ -1088,23 +321,108 @@ lastVerifiedAt
 reviewState
 ```
 
+Do not add fields without a semantic reason.
+
+Every field must have:
+
+* meaning;
+* lifecycle;
+* validation;
+* tests;
+* serialization behavior where required.
+
 ---
 
-### P0 — Typed relationship model
-Instead of arbitrary:
+# 9. Knowledge authority
 
-```
-{
-  from,
-  to,
-  type
-}
-```
-define a controlled relationship vocabulary.
+SpecCraft must distinguish:
 
-For example:
-
+```text
+Human-authored
+Document-derived
+Code-derived
+Test-derived
+AI-inferred
+Human-reviewed
+Approved
+Verified
 ```
+
+Repository-derived information must never automatically become authoritative business requirements.
+
+The correct flow is:
+
+```text
+Evidence
+   ↓
+Observation
+   ↓
+Candidate
+   ↓
+Review
+   ↓
+Approved
+   ↓
+Canonical knowledge
+```
+
+This principle must be preserved throughout the system.
+
+---
+
+# 10. Knowledge graph
+
+The existing graph is currently much simpler than the intended architecture.
+
+Do not claim otherwise.
+
+Progressively evolve it from:
+
+```text
+File
+ └── defines → Symbol
+```
+
+toward:
+
+```text
+Requirement
+ ├── governed-by → Rule
+ ├── realized-by → Workflow
+ ├── exposed-by → API
+ ├── implemented-by → Code
+ ├── verified-by → Test
+ └── supported-by → Evidence
+```
+
+and implementation relationships such as:
+
+```text
+File
+Module
+Class
+Function
+Method
+API
+Test
+```
+
+with:
+
+```text
+defines
+imports
+calls
+tests
+implements
+exposes
+contains
+depends-on
+```
+
+and knowledge relationships such as:
+
+```text
 governed-by
 constrained-by
 contains
@@ -1113,9 +431,6 @@ exposes
 authorized-by
 implemented-by
 defined-in
-calls
-imports
-tests
 verified-by
 derived-from
 supported-by
@@ -1123,263 +438,632 @@ contradicts
 supersedes
 depends-on
 ```
-This becomes the backbone of the graph.
+
+The graph must support extension without redesigning the entire system.
 
 ---
 
-### P0 — Real Specification Graph
-Implement:
+# 11. Code graph — safe migration
 
-```
-nodes
-edges
-indexes
-revision
-provenance
-```
-with deterministic graph traversal.
+The repository contains a parser abstraction but currently uses relatively simple symbol extraction.
 
-Then replace:
+Do not simply delete the existing extraction.
 
+Build:
+
+```text
+Repository
+   ↓
+Language Detection
+   ↓
+Parser Registry
+   ↓
+AST
+   ↓
+Normalized Code Model
+   ↓
+Code Graph
 ```
-calculateImpact()
-```
-with actual graph traversal.
+
+Initially prioritize:
+
+* JavaScript;
+* TypeScript;
+* Python.
+
+Extract progressively:
+
+* file;
+* module;
+* class;
+* function;
+* method;
+* import;
+* export;
+* call;
+* test;
+* route/API.
+
+Keep a fallback where necessary.
+
+Every parser enhancement must have tests.
 
 ---
 
-### P0 — Requirement ↔ implementation ↔ test synchronization
-This is the most important functional upgrade.
+# 12. Brownfield reconstruction
 
-The system should be able to answer:
+The current candidate reconstruction must evolve from shallow symbol documentation into evidence-backed reconstruction.
 
-> What code implements this requirement?
-and:
+Target:
 
-> Which requirements are potentially affected by this code change?
-and:
-
-> Which tests verify this requirement?
-and:
-
-> Which requirements currently have no verification?
-
----
-
-### P0 — Candidate reconstruction pipeline
-Move from:
-
-```
-symbol → Document symbol
-```
-to:
-
-```
-Evidence
-  ↓
-Observation
-  ↓
-Candidate
-  ↓
-Candidate relationships
-  ↓
+```text
+Existing Repository
+      ↓
+Evidence Extraction
+      ↓
+Observations
+      ↓
+Candidate Knowledge
+      ├── Requirement
+      ├── Rule
+      ├── Workflow
+      ├── API
+      ├── Permission
+      ├── Architecture
+      └── Verification
+      ↓
 Confidence
-  ↓
-Reviewer
-  ↓
-Approved canonical artifact
+      ↓
+Provenance
+      ↓
+Human Review
+      ↓
+Canonical Knowledge
 ```
+
+Every candidate should explain:
+
+* source;
+* evidence;
+* inference;
+* confidence;
+* related artifacts;
+* review state.
+
+Never fabricate business intent.
 
 ---
 
-### P1 — AST/code graph
-Connect `ParserRegistry` to the actual graph builder.
+# 13. Traceability
 
-Start with:
+Implement meaningful traceability between:
 
+```text
+Requirement
+   ↓
+Rule
+   ↓
+Workflow
+   ↓
+API
+   ↓
+Code
+   ↓
+Test
+   ↓
+Evidence
 ```
-JavaScript
-TypeScript
-Python
-```
-and extract:
 
-```
-file
-module
-class
-function
-method
-import
-call
-test
-route
-export
-```
-Then add more languages later.
+The system should progressively answer:
+
+* Which code implements this requirement?
+* Which tests verify it?
+* Which requirements are affected by this code?
+* Which requirements have no implementation?
+* Which requirements have no verification?
+* Which code has no known specification relationship?
+* Which relationships are stale?
+* Which evidence supports a relationship?
+
+Do not rely only on direct links.
 
 ---
 
-### P1 — Semantic drift
-Implement:
+# 14. Multi-hop impact analysis
 
+Replace direct-only impact analysis progressively with graph traversal.
+
+Example:
+
+```text
+REQ-104
+  ↓
+RULE-004
+  ↓
+WORKFLOW-009
+  ↓
+API-017
+  ↓
+SERVICE-022
+  ↓
+CODE-031
+  ↓
+TEST-144
 ```
+
+Impact results should preserve:
+
+* path;
+* relationship;
+* confidence;
+* evidence;
+* freshness;
+* review state.
+
+Do not merely return a flat list of affected IDs.
+
+---
+
+# 15. Drift detection
+
+Retain existing SHA-256/file-level drift detection.
+
+Then extend it.
+
+Target:
+
+```text
 File drift
-     ↓
+   ↓
 Symbol drift
-     ↓
+   ↓
 Relationship drift
-     ↓
+   ↓
 Traceability drift
-     ↓
+   ↓
 Specification drift
-     ↓
-Test coverage drift
+   ↓
+Verification drift
 ```
+
+Classify findings such as:
+
+```text
+ADDED
+REMOVED
+CHANGED
+MOVED
+RENAMED
+RELATIONSHIP_CHANGED
+POTENTIALLY_AFFECTED
+UNVERIFIED
+STALE
+CONFLICTED
+```
+
+Do not claim semantic certainty from syntactic evidence.
 
 ---
 
-### P1 — Context Compiler
-Build a proper context package with:
+# 16. Semantic synchronization
 
+This is a core capability.
+
+The existing revision-controlled proposal system is useful, but it is not itself semantic synchronization.
+
+Build toward:
+
+```text
+Detect
+   ↓
+Classify
+   ↓
+Collect Evidence
+   ↓
+Find Related Knowledge
+   ↓
+Generate Proposal
+   ↓
+Explain
+   ↓
+Human Review
+   ↓
+Approve / Reject
+   ↓
+Apply
+   ↓
+Verify
+   ↓
+Record Evidence
 ```
-task
-requirements
-rules
-workflows
+
+Support relationships between:
+
+```text
+Specification ↔ Code
+Specification ↔ Tests
+Code ↔ Tests
+Specification ↔ Evidence
+```
+
+Never silently rewrite canonical specifications because code changed.
+
+Code changes should produce evidence and proposals.
+
+---
+
+# 17. Review and approval
+
+Use an explicit lifecycle.
+
+Possible states:
+
+```text
+DISCOVERED
+CANDIDATE
+UNDER_REVIEW
+ACCEPTED
+REJECTED
+PROPOSED
+APPROVED
+CANONICAL
+VERIFIED
+STALE
+CONFLICTED
+SUPERSEDED
+DEPRECATED
+```
+
+Define valid transitions.
+
+Reject invalid transitions.
+
+Record:
+
+* actor;
+* timestamp;
+* reason;
+* evidence;
+* previous state;
+* new state.
+
+Human approval must remain explicit for authoritative knowledge changes.
+
+---
+
+# 18. Context compiler
+
+The context compiler must eventually construct task-specific context containing relevant:
+
+```text
+Task
+Requirements
+Rules
+Constraints
+Workflows
 APIs
-permissions
-code
-tests
-decisions
-findings
-evidence
-unresolved questions
-provenance
-revision
+Permissions
+Relevant code
+Tests
+Architecture decisions
+Findings
+Evidence
+Unresolved questions
+Provenance
+Context revision
 ```
-and deterministic selection.
+
+Context generation should be:
+
+* relevant;
+* bounded;
+* provenance-aware;
+* reproducible where practical;
+* independent of any specific AI provider.
 
 ---
 
-### P1 — Review state machine
-Make:
+# 19. AI agent independence
 
+Do not make SpecCraft dependent on one AI provider.
+
+Agents such as:
+
+```text
+Codex
+Claude
+Copilot
+Cursor
+Kiro
+other agents
 ```
-candidate
-→ proposed
-→ under-review
-→ approved/rejected
-→ canonical
+
+must be treated as clients/adapters.
+
+The architecture is:
+
+```text
+SpecCraft Knowledge Core
+        ↑
+MCP / CLI / API / Adapter
+        ↑
+AI Agent
 ```
-real domain behavior rather than merely string fields.
+
+not:
+
+```text
+AI Agent
+   ↓
+owns project knowledge
+```
+
+AI-generated information must retain its provenance.
 
 ---
 
-### P1 — MCP adapter
-This is important for the agent-independent vision.
+# 20. MCP / agent API
 
-Expose operations such as:
+Progressively expose stable operations such as:
 
-```
+```text
 speccraft.project.get
 speccraft.context.compile
-speccraft.requirement.review
 speccraft.graph.query
+speccraft.requirement.review
 speccraft.impact.analyze
 speccraft.drift.detect
 speccraft.proposal.create
 speccraft.proposal.review
 speccraft.evidence.get
 ```
-Then Codex/Claude/Cursor/etc. become clients of the same knowledge layer.
+
+Keep adapters thin.
+
+Do not expose internal classes as the public protocol.
 
 ---
 
-# 24. The most important conceptual correction
-I would now sharpen the product terminology.
+# 21. Specification ↔ implementation synchronization
 
-SpecCraft isn't primarily:
+This is a mandatory rule.
 
-> "an AI that writes specifications."
-And it isn't primarily:
+Whenever implementation changes a behavior covered by a specification:
 
-> "a better code assistant."
-The architecture we've arrived at is closer to:
+1. identify the affected specification;
+2. determine whether behavior still satisfies it;
+3. update the implementation OR specification as appropriate;
+4. update traceability;
+5. update tests;
+6. update evidence;
+7. update documentation;
+8. record the decision.
 
-> **SpecCraft is a persistent, evidence-backed engineering knowledge system that maintains the relationship between human intent, specifications, implementation, tests, decisions, and evidence independently of any particular AI agent or development environment.**
-Then AI agents become consumers/producers of proposals against that knowledge system.
+Likewise, whenever a specification changes:
 
-That distinction is what makes the project substantially more interesting than another specification generator.
+1. identify affected code;
+2. identify affected tests;
+3. identify affected workflows;
+4. identify affected APIs;
+5. identify affected permissions;
+6. generate impact findings/proposals;
+7. verify implementation after changes.
 
----
-
-# 25. Current maturity, based on the actual repository
-I'd describe the repository today as:
-
-```
-                 SpecCraft
-                    │
-        ┌───────────┴────────────┐
-        │                        │
-   IMPLEMENTED              MISSING/PARTIAL
-        │                        │
-        ▼                        ▼
- Requirement model       Semantic knowledge graph
- Review heuristics       Full traceability
- Repository scanning     AST/code intelligence
- Basic code graph        Semantic drift
- Candidate inference    Multi-hop impact
- Hash drift              Sync engine
- Context prototype       Context compiler
- Revision control        Approval lifecycle
- Provider routing        Real agent adapters
- Security foundations   MCP integration
- Production contracts   Production deployment
-```
-So I would **not restart the implementation**.
-
-The existing repository provides a useful foundation.
-
-But I also would **not continue adding infrastructure around the current model yet**.
-
-The priority should now move toward the missing semantic core.
+Do not leave one side silently stale.
 
 ---
 
-# 26. My recommended architecture boundary from here
-The cleanest next structure would be:
+# 22. Documentation synchronization
 
+Documentation must reflect actual behavior.
+
+After every meaningful feature/refactor:
+
+Check:
+
+* README;
+* architecture docs;
+* API docs;
+* specification;
+* implementation status;
+* examples;
+* diagrams;
+* limitations;
+* tests.
+
+Do not describe planned functionality as implemented.
+
+Do not leave obsolete architecture descriptions behind.
+
+---
+
+# 23. Tests are part of the implementation
+
+A feature is incomplete without tests.
+
+Maintain:
+
+### Unit tests
+
+Domain behavior, graph behavior, lifecycle, validation, synchronization.
+
+### Integration tests
+
+Repository analysis, parsers, graph building, reconstruction, persistence, API.
+
+### Regression tests
+
+Every important discovered bug should receive a regression test.
+
+### Contract tests
+
+Public API behavior where applicable.
+
+Never delete a test simply because it is inconvenient.
+
+Never weaken an assertion merely to make the test pass.
+
+---
+
+# 24. Test-driven refactoring for risky changes
+
+For risky existing behavior:
+
+```text
+Existing behavior
+      ↓
+Characterization test
+      ↓
+Refactor
+      ↓
+Run test
+      ↓
+Improve implementation
 ```
+
+For new domain behavior:
+
+```text
+Specification
+      ↓
+Test
+      ↓
+Implementation
+      ↓
+Verification
+```
+
+This does not require rigid TDD for every line of code, but behavior must be testable before declaring it stable.
+
+---
+
+# 25. Public API compatibility
+
+Before modifying public functions/endpoints/configuration:
+
+Search all consumers.
+
+Prefer:
+
+```text
+Add new behavior
+      ↓
+Compatibility layer
+      ↓
+Migration
+      ↓
+Deprecation
+      ↓
+Removal
+```
+
+If a breaking change is necessary:
+
+* document it;
+* update consumers;
+* update tests;
+* provide migration;
+* update API documentation.
+
+Never create accidental breaking changes.
+
+---
+
+# 26. Database and persistence
+
+Do not rush into replacing reference/file persistence.
+
+First establish correct domain semantics.
+
+When persistence changes:
+
+* use explicit migrations;
+* avoid destructive changes;
+* preserve historical records;
+* preserve revision information;
+* preserve audit history;
+* preserve provenance;
+* test migration behavior;
+* maintain concurrency guarantees.
+
+Clearly distinguish:
+
+```text
+Reference implementation
+```
+
+from:
+
+```text
+Production infrastructure
+```
+
+---
+
+# 27. Security
+
+Never weaken existing security controls.
+
+Preserve:
+
+* repository boundary restrictions;
+* input validation;
+* secret handling;
+* authentication;
+* authorization;
+* audit logging;
+* rate limiting.
+
+Repository analysis must not execute arbitrary repository code.
+
+Repository contents must be treated as untrusted input.
+
+Never expose secrets in logs or generated context.
+
+---
+
+# 28. Cleanup rules
+
+Cleanup is encouraged, but only when safe.
+
+Clean up:
+
+* dead code;
+* duplicated logic;
+* obsolete abstractions;
+* inconsistent naming;
+* unreachable branches;
+* misleading comments;
+* stale documentation;
+* unnecessary complexity.
+
+Do not perform cosmetic rewrites across unrelated files.
+
+Keep each refactoring logically scoped.
+
+---
+
+# 29. Architectural refactoring
+
+Move gradually toward:
+
+```text
 src/
 ├── domain/
 │   ├── knowledge/
-│   │   ├── requirement.js
-│   │   ├── rule.js
-│   │   ├── workflow.js
-│   │   ├── api.js
-│   │   ├── decision.js
-│   │   ├── evidence.js
-│   │   ├── test.js
-│   │   └── trace-link.js
-│   │
 │   ├── graph/
-│   │   ├── graph.js
-│   │   ├── node.js
-│   │   ├── edge.js
-│   │   └── traversal.js
-│   │
+│   ├── provenance/
 │   ├── review/
-│   ├── synchronization/
-│   └── provenance/
+│   └── synchronization/
 │
 ├── application/
-│   ├── review/
 │   ├── reconstruction/
+│   ├── traceability/
 │   ├── impact/
 │   ├── drift/
+│   ├── synchronization/
 │   ├── context/
-│   └── synchronization/
+│   └── review/
 │
 ├── infrastructure/
 │   ├── repository/
@@ -1393,24 +1077,520 @@ src/
     ├── http/
     ├── cli/
     ├── mcp/
-    ├── codex/
-    ├── claude/
-    ├── cursor/
-    └── ...
+    └── agents/
 ```
-This would also align much better with the **SOLID + DDD + Hexagonal + Specification + Adapter + Strategy + CQRS/Outbox** architecture we discussed previously.
+
+However:
+
+> **Do not move files merely to make the tree look like this.**
+
+Only introduce a boundary when it improves responsibility, testability, dependency direction, or domain clarity.
 
 ---
 
-## Bottom line
-The GitHub implementation is **real progress**. It already has a good foundation for:
+# 30. Engineering principles
 
-**requirements → evidence → repository scanning → candidate reconstruction → graph → drift → context → revisioned proposals → provider abstraction → security/production boundaries.**
+Use appropriate engineering practices including:
 
-But the heart of the original SpecCraft idea is still missing:
+* SOLID;
+* DRY;
+* KISS;
+* separation of concerns;
+* dependency inversion;
+* domain-driven design where useful;
+* hexagonal architecture;
+* explicit domain boundaries;
+* specification pattern where appropriate;
+* unit-of-work where persistence requires it;
+* domain events where meaningful;
+* outbox pattern where asynchronous integration requires it;
+* optimistic concurrency;
+* immutable evidence/history where appropriate;
+* deterministic processing where possible.
 
-**a genuinely typed, persistent, provenance-aware specification graph and a semantic synchronization engine connecting that graph to code, tests and evidence.**
+Do not apply patterns simply for pattern's sake.
 
-That should be the next major implementation phase—not another round of UI, provider integrations, or infrastructure.
+Prefer simple designs that preserve clear semantics.
 
-I would treat the current repository as **SpecCraft Reference Platform v0.1**, and the next milestone as **SpecCraft Knowledge Core v0.2**, where the actual differentiating technology gets implemented.
+---
+
+# 31. Self-hosting / self-describing SpecCraft
+
+As the implementation becomes capable, use SpecCraft to describe and analyze itself.
+
+Introduce a meaningful structure such as:
+
+```text
+/spec
+├── requirements/
+├── rules/
+├── workflows/
+├── decisions/
+├── architecture/
+├── traceability/
+├── evidence/
+└── tests/
+```
+
+Eventually:
+
+```text
+SpecCraft
+   ↓
+analyzes SpecCraft repository
+   ↓
+builds knowledge graph
+   ↓
+checks specification ↔ implementation
+   ↓
+checks tests
+   ↓
+detects drift
+   ↓
+generates proposals
+   ↓
+human reviews
+```
+
+Do not create artificial specifications simply to fill directories.
+
+Only capture meaningful project knowledge.
+
+---
+
+# 32. Implementation order
+
+Follow this order unless repository evidence demonstrates a safer dependency order:
+
+```text
+PHASE 0
+Baseline + repository audit
+
+PHASE 1
+Canonical knowledge model
+
+PHASE 2
+Typed knowledge graph
+
+PHASE 3
+AST-based code graph
+
+PHASE 4
+Traceability
+
+PHASE 5
+Multi-hop impact analysis
+
+PHASE 6
+Drift / consistency engine
+
+PHASE 7
+Brownfield reconstruction
+
+PHASE 8
+Context compiler
+
+PHASE 9
+Review/proposal lifecycle
+
+PHASE 10
+Semantic synchronization
+
+PHASE 11
+MCP / agent adapters
+
+PHASE 12
+Durable production persistence
+
+PHASE 13
+UI / collaboration / SaaS
+```
+
+Do not jump to later phases while foundational semantics are unstable.
+
+---
+
+# 33. Vertical slice rule
+
+Do not implement every layer partially if a smaller end-to-end slice can prove the architecture.
+
+Prefer vertical slices such as:
+
+```text
+Requirement
+   ↓
+Rule
+   ↓
+Code
+   ↓
+Test
+   ↓
+Evidence
+   ↓
+Graph
+   ↓
+Impact
+   ↓
+Sync Proposal
+   ↓
+Review
+```
+
+Make one complete path work correctly before multiplying it across the entire repository.
+
+---
+
+# 34. Flagship workflow
+
+The strongest demonstration should be:
+
+```text
+Existing Repository
+       ↓
+Analyze
+       ↓
+Code Graph
+       ↓
+Candidate Specifications
+       ↓
+Evidence + Provenance
+       ↓
+Human Review
+       ↓
+Canonical Knowledge
+       ↓
+Modify Code
+       ↓
+Detect Change
+       ↓
+Affected Specifications
+       ↓
+Affected Tests
+       ↓
+Drift / Impact Report
+       ↓
+Synchronization Proposal
+       ↓
+Human Approval
+       ↓
+Verification
+```
+
+This should become a major integration test and demonstration workflow.
+
+---
+
+# 35. Example synchronization result
+
+A useful result should look conceptually like:
+
+```text
+SYNC PROPOSAL #102
+
+Detected:
+membership/service.py::close_membership changed
+
+Potentially affected:
+REQ-001
+RULE-004
+TEST-144
+
+Reason:
+REQ-001
+  → RULE-004
+  → close_membership()
+
+Evidence:
+commit abc123
+source lines 88–112
+test TEST-144
+
+Confidence:
+0.87
+
+Recommended action:
+Review whether REQ-001 remains satisfied.
+
+Status:
+UNDER_REVIEW
+```
+
+The system should say:
+
+> Evidence indicates that the specification may be affected.
+
+It should NOT automatically say:
+
+> The specification is wrong.
+
+---
+
+# 36. Contradictions must not be silently resolved
+
+If the repository contains conflicting information:
+
+```text
+Specification A
+       ↕
+Specification B
+```
+
+or:
+
+```text
+Specification
+      ↕
+Implementation
+```
+
+or:
+
+```text
+Documentation
+      ↕
+Implementation
+```
+
+do not guess.
+
+Create:
+
+```text
+CONFLICT
+```
+
+with:
+
+* conflicting artifacts;
+* evidence;
+* explanation;
+* affected relationships;
+* review requirement.
+
+Human/authorized review determines the resolution.
+
+---
+
+# 37. Uncertainty must be explicit
+
+Use meaningful confidence/provenance.
+
+Distinguish:
+
+```text
+Observed
+Inferred
+Suggested
+Human-confirmed
+Verified
+Unknown
+```
+
+Never convert uncertainty into false certainty.
+
+This is especially important for:
+
+* brownfield reconstruction;
+* AI-generated specifications;
+* semantic relationships;
+* business rules;
+* permissions;
+* impact analysis.
+
+---
+
+# 38. "fully implemented" means more than code exists
+
+Do not declare a capability complete because a function exists.
+
+A capability is complete only when:
+
+```text
+Domain model
++
+Application behavior
++
+Infrastructure
++
+Adapters
++
+Validation
++
+Tests
++
+Error handling
++
+Security
++
+Persistence where required
++
+Documentation
++
+Specification
++
+Traceability
++
+Evidence
++
+Compatibility
+```
+
+are appropriately handled.
+
+If something is only partial, explicitly label it:
+
+```text
+PARTIAL
+PROTOTYPE
+REFERENCE
+PLANNED
+```
+
+Never disguise partial functionality as complete.
+
+---
+
+# 39. Final check after each milestone
+
+Before moving forward:
+
+### Code
+
+* Is the code correct?
+* Is responsibility clear?
+* Is duplication reduced?
+* Is there dead code?
+
+### Tests
+
+* Do tests pass?
+* Are new behaviors covered?
+* Are regressions covered?
+
+### Specification
+
+* Does the specification describe the new behavior?
+* Is it still accurate?
+
+### Architecture
+
+* Does the architecture documentation match reality?
+
+### Traceability
+
+* Are relevant relationships updated?
+
+### Evidence
+
+* Can the implementation be traced to evidence?
+
+### Compatibility
+
+* Did existing behavior remain intact?
+
+### Security
+
+* Did security boundaries remain intact?
+
+### Documentation
+
+* Are examples and API descriptions correct?
+
+### Diff
+
+* Are there unrelated changes?
+
+Only continue when the milestone is internally consistent.
+
+---
+
+# 40. Final project-level validation
+
+At the end of the implementation pass, perform a complete consistency review:
+
+```text
+Specifications
+      ↕
+Architecture
+      ↕
+Domain Model
+      ↕
+Application Services
+      ↕
+Infrastructure
+      ↕
+Adapters
+      ↕
+Tests
+      ↕
+Evidence
+      ↕
+Documentation
+```
+
+Identify every remaining inconsistency.
+
+Fix what can safely be fixed.
+
+Explicitly document what remains.
+
+Do not hide limitations.
+
+---
+
+# 41. Most important rule
+
+The governing principle for the entire task is:
+
+> **Do not optimize for the amount of code changed. Optimize for verified convergence between the intended specification, architecture, implementation, tests, evidence, and documentation.**
+
+The repository should become better after every milestone, not merely different.
+
+Never leave the repository in a knowingly broken state at the end of a milestone.
+
+Never make a large speculative change when a smaller verified change can achieve the same architectural progress.
+
+Never silently change project meaning.
+
+Never silently promote inference to authority.
+
+Never claim a capability is complete until its implementation, tests, specifications, documentation, and evidence are sufficiently aligned.
+
+The desired final state is:
+
+```text
+                    ┌───────────────────┐
+                    │   Human Intent    │
+                    └─────────┬─────────┘
+                              ↓
+                    ┌───────────────────┐
+                    │ Canonical Specs   │
+                    └─────────┬─────────┘
+                              ↕
+                    ┌───────────────────┐
+                    │ Knowledge Graph   │
+                    └─────────┬─────────┘
+                              ↕
+                    ┌───────────────────┐
+                    │ Synchronization   │
+                    └──────┬───────┬────┘
+                           ↓       ↑
+                    ┌─────────┐ ┌─────────┐
+                    │Code     │ │Tests    │
+                    │Graph    │ │Evidence │
+                    └────┬────┘ └────┬────┘
+                         ↓           ↓
+                    ┌───────────────────┐
+                    │ Verified Software │
+                    └───────────────────┘
+                              ↕
+                    ┌───────────────────┐
+                    │ Context Compiler  │
+                    └─────────┬─────────┘
+                              ↓
+                    ┌───────────────────┐
+                    │ AI Agents / MCP   │
+                    └───────────────────┘
+```
+
+**Build toward this architecture without breaking the existing repository on the way there.**

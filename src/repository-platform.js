@@ -4,7 +4,7 @@ import { join, relative, resolve, sep } from "node:path";
 
 const ignoredDirectories = new Set([".git", "node_modules", "dist", "build", "coverage", ".venv"]);
 const ignoredFiles = new Set([".env", ".env.local", ".env.production", "id_rsa", "id_ed25519"]);
-const supportedExtensions = new Set([".js", ".mjs", ".cjs", ".ts", ".tsx", ".py"]);
+const supportedExtensions = new Set([".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".py"]);
 const maxFileBytes = 512_000;
 const maxFiles = 2_000;
 
@@ -27,7 +27,9 @@ function hash(content) {
 
 function languageFor(filePath) {
   const extension = filePath.slice(filePath.lastIndexOf(".")).toLowerCase();
-  return extension === ".py" ? "python" : "javascript";
+  if (extension === ".py") return "python";
+  if ([".ts", ".tsx"].includes(extension)) return "typescript";
+  return "javascript";
 }
 
 async function walk(root, current, files) {

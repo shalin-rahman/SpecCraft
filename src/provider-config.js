@@ -1,4 +1,6 @@
 const providerKinds = new Set(["http-model", "ollama"]);
+const maxTimeoutMs = 120_000;
+const maxRetries = 5;
 
 function requireText(value, field) {
   if (typeof value !== "string" || value.trim() === "") {
@@ -37,6 +39,14 @@ export function validateProviderConfig(input) {
     if (!Number.isInteger(priority) || priority < 0) {
       throw new RangeError(`${id}.priority must be a non-negative integer`);
     }
+    const timeoutMs = provider.timeoutMs === undefined ? 30000 : Number(provider.timeoutMs);
+    if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > maxTimeoutMs) {
+      throw new RangeError(`${id}.timeoutMs must be an integer from 1 to ${maxTimeoutMs}`);
+    }
+    const retries = provider.retries === undefined ? 0 : Number(provider.retries);
+    if (!Number.isInteger(retries) || retries < 0 || retries > maxRetries) {
+      throw new RangeError(`${id}.retries must be an integer from 0 to ${maxRetries}`);
+    }
     return {
       id,
       kind,
@@ -46,8 +56,8 @@ export function validateProviderConfig(input) {
       allowedHosts,
       allowLocal: provider.allowLocal === true,
       model: requireText(provider.model, `${id}.model`),
-      timeoutMs: Number.isInteger(provider.timeoutMs) ? provider.timeoutMs : 30000,
-      retries: Number.isInteger(provider.retries) ? provider.retries : 0,
+      timeoutMs,
+      retries,
       secretEnv: provider.secretEnv
     };
   });

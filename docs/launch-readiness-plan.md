@@ -2,6 +2,8 @@
 
 This document turns the project-level blockers into a staged delivery plan. It is meant to prevent the work from stalling in abstract architecture discussions and to give each dependency a clear owner, exit criterion, and release gate.
 
+The owner labels below name the functions that would need to take responsibility. No individual owners, release date, or production environment have been assigned. The current open production work is listed in the [delivery backlog](production-delivery-backlog.md).
+
 ## 1. Operating principle
 
 SpecCraft is currently at a working reference implementation stage. It is not yet a production-ready platform because the required production contracts are still not owned, selected, and validated.
@@ -38,8 +40,8 @@ Owner: Security + Platform
 Goal: enforce identity and project-scoped access using a real identity provider.
 
 Acceptance criteria:
-- OIDC/OAuth2 discovery and JWKS validation
-- issuer, audience, expiry, not-before, and signature checks
+- Integrate the local signature verifier with the selected OIDC/OAuth2 provider, including discovery and key rotation
+- Apply issuer, audience, expiry, not-before, signature, tenant, and project authorization checks to every protected operation
 - user and service identities are separated
 - authorization enforced for every project-scoped operation
 - deny-by-default policy on missing claims or permissions

@@ -1,5 +1,12 @@
 import { appendFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { createHash, createHmac, randomUUID } from "node:crypto";
+import {
+  createHash,
+  createHmac,
+  createPublicKey,
+  randomUUID,
+  timingSafeEqual,
+  verify as verifySignature
+} from "node:crypto";
 import { dirname } from "node:path";
 
 const ISO = () => new Date().toISOString();
@@ -9,23 +16,79 @@ function digest(value) {
 }
 
 function base64UrlDecode(value) {
-  const normalized = String(value).replace(/-/g, "+").replace(/_/g, "/");
-  const padding = normalized.length % 4 === 0 ? "" : "=".repeat(4 - (normalized.length % 4));
-  return Buffer.from(normalized + padding, "base64").toString("utf8");
+  if (typeof value !== "string" || !/^[A-Za-z0-9_-]+$/.test(value)) {
+    throw new Error("Invalid JWT encoding");
+  }
+  return Buffer.from(value, "base64url").toString("utf8");
 }
 
 function decodeJsonWebToken(token) {
+  if (typeof token !== "string" || Buffer.byteLength(token) > 64 * 1024) {
+    throw new Error("Invalid JWT size");
+  }
   const parts = String(token).split(".");
   if (parts.length !== 3) {
     throw new Error("Invalid JWT format");
   }
   const header = JSON.parse(base64UrlDecode(parts[0]));
   const payload = JSON.parse(base64UrlDecode(parts[1]));
+  if (!header || typeof header !== "object" || Array.isArray(header) ||
+      !payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new Error("Invalid JWT contents");
+  }
   return {
     header,
     payload,
     signature: parts[2],
     signingInput: `${parts[0]}.${parts[1]}`
+  };
+}
+
+function verifyHmacJwt(decoded, secret) {
+  if (decoded.header.alg !== "HS256") throw new Error("Unsupported token algorithm");
+  if ((typeof secret !== "string" && !Buffer.isBuffer(secret)) || secret.length === 0) {
+    throw new Error("Token verification key is required");
+  }
+  if (!/^[A-Za-z0-9_-]+$/.test(decoded.signature)) throw new Error("Token signature verification failed");
+  const actual = Buffer.from(decoded.signature, "base64url");
+  const expected = createHmac("sha256", secret).update(decoded.signingInput).digest();
+  if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
+    throw new Error("Token signature verification failed");
+  }
+}
+
+function createVerifiedPrincipal(decoded, { issuer, audience, clockSkewMs }) {
+  const payload = decoded.payload;
+  const now = Date.now();
+  if (typeof payload.exp !== "number" || !Number.isFinite(payload.exp)) {
+    throw new Error("Token expiration claim is required");
+  }
+  const expiresAt = payload.exp * 1000;
+  if (!Number.isFinite(expiresAt)) throw new Error("Token expiration claim is invalid");
+  if (now >= expiresAt + clockSkewMs) throw new Error("Token expired");
+  if (payload.nbf !== undefined) {
+    if (typeof payload.nbf !== "number" || !Number.isFinite(payload.nbf)) {
+      throw new Error("Token not-before claim is invalid");
+    }
+    const validFrom = payload.nbf * 1000;
+    if (!Number.isFinite(validFrom)) throw new Error("Token not-before claim is invalid");
+    if (now + clockSkewMs < validFrom) throw new Error("Token not yet valid");
+  }
+  if (issuer && payload.iss !== issuer) throw new Error("Token issuer mismatch");
+
+  const tokenAudience = Array.isArray(payload.aud) ? payload.aud : [payload.aud].filter(Boolean);
+  if (tokenAudience.some((value) => typeof value !== "string")) throw new Error("Token audience is invalid");
+  if (audience && !tokenAudience.includes(audience)) throw new Error("Token audience mismatch");
+
+  return {
+    subject: payload.sub ?? "anonymous",
+    issuer: payload.iss ?? issuer ?? "unknown",
+    audience: tokenAudience,
+    project: payload.project ?? null,
+    tenant: payload.tenant ?? null,
+    roles: Array.isArray(payload.roles) ? payload.roles : [],
+    scopes: Array.isArray(payload.scopes) ? payload.scopes : [],
+    claims: payload
   };
 }
 
@@ -361,6 +424,9 @@ export class ProjectRepository {
 
 export class ManagedIdentityService {
   constructor({ issuer, audience, signingSecret = null, clockSkewMs = 30_000 } = {}) {
+    if (!Number.isSafeInteger(clockSkewMs) || clockSkewMs < 0) {
+      throw new RangeError("Clock skew must be a non-negative safe integer");
+    }
     this.issuer = issuer;
     this.audience = audience;
     this.signingSecret = signingSecret;
@@ -372,52 +438,12 @@ export class ManagedIdentityService {
     const audience = options.audience ?? this.audience;
     const secret = options.signingSecret ?? this.signingSecret;
     const decoded = decodeJsonWebToken(token);
-
-    if (secret && decoded.header.alg && decoded.header.alg.startsWith("HS")) {
-      const expected = createHmac("sha256", secret)
-        .update(decoded.signingInput)
-        .digest("base64")
-        .replace(/\+/g, "-")
-        .replace(/\//g, "_")
-        .replace(/=+$/g, "");
-      if (expected !== decoded.signature) {
-        throw new Error("Token signature verification failed");
-      }
-    }
-
-    const now = Date.now();
-    const payload = decoded.payload;
-    const exp = Number(payload.exp ?? 0);
-    const nbf = Number(payload.nbf ?? 0);
-    if (exp && now > exp * 1000 + this.clockSkewMs) {
-      throw new Error("Token expired");
-    }
-    if (nbf && now < nbf * 1000 - this.clockSkewMs) {
-      throw new Error("Token not yet valid");
-    }
-    if (issuer && payload.iss !== issuer) {
-      throw new Error("Token issuer mismatch");
-    }
-
-    const tokenAudience = Array.isArray(payload.aud) ? payload.aud : [payload.aud].filter(Boolean);
-    if (audience && tokenAudience.length > 0 && !tokenAudience.includes(audience)) {
-      throw new Error("Token audience mismatch");
-    }
-    if (audience && tokenAudience.length === 0) {
-      throw new Error("Token audience missing");
-    }
-
-    const principal = {
-      subject: payload.sub ?? "anonymous",
-      issuer: payload.iss ?? issuer ?? "unknown",
-      audience: tokenAudience,
-      project: payload.project ?? null,
-      tenant: payload.tenant ?? null,
-      roles: Array.isArray(payload.roles) ? payload.roles : [],
-      scopes: Array.isArray(payload.scopes) ? payload.scopes : [],
-      claims: payload
-    };
-    return principal;
+    verifyHmacJwt(decoded, secret);
+    return createVerifiedPrincipal(decoded, {
+      issuer,
+      audience,
+      clockSkewMs: options.clockSkewMs ?? this.clockSkewMs
+    });
   }
 
   authorize(principal, required = {}) {
@@ -542,10 +568,40 @@ export class ManagedDatabaseAdapter {
 }
 
 export class ManagedIdentityProvider extends ManagedIdentityService {
-  constructor({ issuer, audience, jwksUrl = null, signingSecret = null, clockSkewMs = 30_000, requiredTenant = null } = {}) {
+  constructor({
+    issuer,
+    audience,
+    jwksUrl = null,
+    signingSecret = null,
+    clockSkewMs = 30_000,
+    requiredTenant = null,
+    fetchImpl = globalThis.fetch,
+    jwksTimeoutMs = 5_000,
+    jwksCacheTtlMs = 300_000,
+    maxJwksBytes = 256 * 1024,
+    maxJwksKeys = 100
+  } = {}) {
     super({ issuer, audience, signingSecret, clockSkewMs });
+    if (jwksUrl) {
+      const endpoint = new URL(jwksUrl);
+      if (endpoint.protocol !== "https:" || endpoint.username || endpoint.password) {
+        throw new Error("JWKS endpoint must use HTTPS and contain no credentials");
+      }
+    }
+    if (!Number.isSafeInteger(jwksTimeoutMs) || jwksTimeoutMs < 1 ||
+        !Number.isSafeInteger(jwksCacheTtlMs) || jwksCacheTtlMs < 1 ||
+        !Number.isSafeInteger(maxJwksBytes) || maxJwksBytes < 1 ||
+        !Number.isSafeInteger(maxJwksKeys) || maxJwksKeys < 1) {
+      throw new RangeError("JWKS limits must be positive safe integers");
+    }
     this.jwksUrl = jwksUrl;
     this.requiredTenant = requiredTenant;
+    this.fetchImpl = fetchImpl;
+    this.jwksTimeoutMs = jwksTimeoutMs;
+    this.jwksCacheTtlMs = jwksCacheTtlMs;
+    this.maxJwksBytes = maxJwksBytes;
+    this.maxJwksKeys = maxJwksKeys;
+    this.jwksCache = null;
   }
 
   validateConfiguration() {
@@ -563,8 +619,106 @@ export class ManagedIdentityProvider extends ManagedIdentityService {
     };
   }
 
-  verifyToken(token, options = {}) {
-    const principal = super.verifyToken(token, options);
+  async loadJwks() {
+    if (!this.jwksUrl || typeof this.fetchImpl !== "function") {
+      throw new Error("JWKS verification is not configured");
+    }
+    if (this.jwksCache && this.jwksCache.expiresAt > Date.now()) return this.jwksCache.keys;
+
+    let response;
+    try {
+      response = await this.fetchImpl(this.jwksUrl, {
+        redirect: "error",
+        signal: AbortSignal.timeout(this.jwksTimeoutMs)
+      });
+    } catch {
+      throw new Error("Unable to retrieve JWKS");
+    }
+    if (!response?.ok || !response.body) throw new Error("Unable to retrieve JWKS");
+
+    const declaredLength = Number(response.headers?.get?.("content-length"));
+    if (Number.isFinite(declaredLength) && declaredLength > this.maxJwksBytes) {
+      await response.body.cancel().catch(() => {});
+      throw new Error("JWKS response is too large");
+    }
+
+    const reader = response.body.getReader();
+    const chunks = [];
+    let totalBytes = 0;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        totalBytes += value.byteLength;
+        if (totalBytes > this.maxJwksBytes) {
+          await reader.cancel();
+          throw new Error("JWKS response is too large");
+        }
+        chunks.push(Buffer.from(value));
+      }
+    } catch (error) {
+      await reader.cancel().catch(() => {});
+      if (error instanceof Error && /too large/i.test(error.message)) throw error;
+      throw new Error("Unable to read JWKS response");
+    } finally {
+      reader.releaseLock();
+    }
+
+    let document;
+    try {
+      document = JSON.parse(Buffer.concat(chunks, totalBytes).toString("utf8"));
+    } catch {
+      throw new Error("Invalid JWKS response");
+    }
+    if (!Array.isArray(document.keys) || document.keys.length > this.maxJwksKeys) {
+      throw new Error("Invalid JWKS key set");
+    }
+    const keyIds = new Set();
+    for (const key of document.keys) {
+      if (typeof key?.kid !== "string" || key.kid.length === 0) continue;
+      if (keyIds.has(key.kid)) throw new Error("JWKS contains duplicate key IDs");
+      keyIds.add(key.kid);
+    }
+    this.jwksCache = { keys: document.keys, expiresAt: Date.now() + this.jwksCacheTtlMs };
+    return document.keys;
+  }
+
+  async verifyToken(token, options = {}) {
+    const decoded = decodeJsonWebToken(token);
+    let principal;
+    if (decoded.header.alg === "HS256") {
+      principal = super.verifyToken(token, options);
+    } else if (decoded.header.alg === "RS256") {
+      if (decoded.header.crit || decoded.header.b64 === false || typeof decoded.header.kid !== "string") {
+        throw new Error("Unsupported JWT header");
+      }
+      const keys = await this.loadJwks();
+      const key = keys.find((candidate) =>
+        candidate && candidate.kid === decoded.header.kid && candidate.kty === "RSA" &&
+        (!candidate.alg || candidate.alg === "RS256") &&
+        (!candidate.use || candidate.use === "sig") &&
+        (candidate.key_ops === undefined || (Array.isArray(candidate.key_ops) && candidate.key_ops.includes("verify"))) &&
+        typeof candidate.n === "string" && typeof candidate.e === "string"
+      );
+      if (!key || !/^[A-Za-z0-9_-]+$/.test(decoded.signature)) {
+        throw new Error("No compatible JWKS key found");
+      }
+      let signatureValid = false;
+      try {
+        const publicKey = createPublicKey({ key, format: "jwk" });
+        signatureValid = verifySignature("RSA-SHA256", Buffer.from(decoded.signingInput), publicKey, Buffer.from(decoded.signature, "base64url"));
+      } catch {
+        signatureValid = false;
+      }
+      if (!signatureValid) throw new Error("Token signature verification failed");
+      principal = createVerifiedPrincipal(decoded, {
+        issuer: options.issuer ?? this.issuer,
+        audience: options.audience ?? this.audience,
+        clockSkewMs: options.clockSkewMs ?? this.clockSkewMs
+      });
+    } else {
+      throw new Error("Unsupported token algorithm");
+    }
     if (this.requiredTenant && principal.tenant !== this.requiredTenant) {
       throw new Error("Tenant is not authorized for this resource");
     }
@@ -796,8 +950,7 @@ export class SecurityReviewRunner {
         id: rule.id,
         severity: rule.severity,
         context,
-        summary: rule.summary,
-        match: matches[0].slice(0, 180)
+        summary: rule.summary
       });
     }
     return {

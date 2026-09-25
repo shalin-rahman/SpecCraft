@@ -76,17 +76,8 @@ Threat model at minimum:
 
 For each threat, define asset, trust boundary, attack path, control, residual risk, and test.
 
-## Implement
+## Local reference status
 
-The local reference implementation will first provide:
+The repository has a streaming 1 MB request-body limit, loopback-only access when no bearer token is configured, a timing-safe bearer-token check, a bounded per-process rate limiter keyed by peer address, a 1,000-record in-memory proposal cap, revision-conflict checks, provider routing, parser diagnostics, and scan limits. These controls support local development; they are not managed production services.
 
-- configuration validation
-- bounded request bodies
-- bearer-token authentication hook
-- structured audit events
-- in-memory rate limiter for local verification
-- revision conflicts
-- provider circuit state
-- parser diagnostics and scan limits
-
-The repository now also contains local reference adapters for durable audit, collaboration, queue, outbox, parser, benchmark, and secret boundaries. The HTTP service restricts scan roots, synchronization uses typed operations, and provider endpoints require an explicit host allowlist with HTTPS or explicit loopback development mode. Managed database, identity, external secret, distributed limiter, queue, and independent testing integrations remain deployment adapters selected through configuration.
+The repository also has a local identity adapter that verifies explicit HS256 keys or RS256 signatures from a configured HTTPS JWKS URL. The HTTP API does not yet use it or integrate provider discovery and project authorization. File-backed audit, collaboration, queue, and outbox examples; environment-backed secret helpers; typed provider host checks; and local security-review and evaluation primitives are reference code. Their presence does not mean the service is wired to a managed database, identity provider, secret service, distributed limiter, durable queue, or external security review. Those integrations remain open production work.
