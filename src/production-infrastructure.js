@@ -190,12 +190,17 @@ export class FileJobQueue {
 
   async claimNext(workerId) {
     const records = await this.list();
-    const candidate = records.find((record) => record.status === "queued" || record.status === "retrying");
+    const now = Date.now();
+    const candidate = records.find((record) => {
+      const expiredLease = record.status === "running" && Number(record.leaseUntil ?? 0) <= now;
+      return record.status === "queued" || record.status === "retrying" || expiredLease;
+    });
     if (!candidate) return null;
 
     candidate.status = "running";
     candidate.workerId = workerId;
     candidate.attempts = (candidate.attempts ?? 0) + 1;
+    candidate.leaseUntil = now + this.leaseMs;
     candidate.updatedAt = ISO();
     await this.persist(records);
     return candidate;
@@ -209,6 +214,7 @@ export class FileJobQueue {
     record.output = output;
     record.completedAt = ISO();
     record.updatedAt = ISO();
+    record.leaseUntil = null;
     await this.persist(records);
     return record;
   }
@@ -220,6 +226,8 @@ export class FileJobQueue {
     const shouldRetry = (record.attempts ?? 0) < this.maxAttempts;
     record.status = shouldRetry ? "retrying" : "failed";
     record.lastError = String(errorMessage ?? "unknown");
+    record.leaseUntil = null;
+    record.deadLetter = !shouldRetry;
     record.updatedAt = ISO();
     await this.persist(records);
     return record;
@@ -430,5 +438,377 @@ export class ManagedIdentityService {
     }
 
     return true;
+  }
+}
+
+export class ManagedDatabaseAdapter {
+  constructor({ connectionString = process.env.DATABASE_URL, dialect = "postgresql", tableName = "spec_craft_projects" } = {}) {
+    if (typeof connectionString !== "string" || connectionString.trim() === "") {
+      throw new TypeError("A managed database connection string is required");
+    }
+    this.connectionString = connectionString.trim();
+    this.dialect = String(dialect);
+    this.tableName = String(tableName);
+    const parsed = new URL(this.connectionString);
+    if (!parsed.hostname) {
+      throw new Error("Database connection string must include a host");
+    }
+    if (!/^(postgres|postgresql)$/i.test(parsed.protocol.replace(":", ""))) {
+      throw new Error("Only PostgreSQL-compatible managed databases are supported");
+    }
+    this.projects = new Map();
+  }
+
+  normalizeProject(project = {}) {
+    const id = String(project.id ?? "").trim();
+    if (!id) {
+      throw new Error("Project id is required");
+    }
+    return {
+      id,
+      name: String(project.name ?? id).trim(),
+      owner: String(project.owner ?? "system").trim(),
+      metadata: project.metadata ?? {},
+      createdAt: ISO(),
+      updatedAt: ISO(),
+      status: project.status ?? "active",
+      revision: Number(project.revision ?? 0),
+      proposals: Array.isArray(project.proposals) ? project.proposals : [],
+      audit: Array.isArray(project.audit) ? project.audit : []
+    };
+  }
+
+  migrationPlan() {
+    return {
+      dialect: this.dialect,
+      tableName: this.tableName,
+      columns: ["id", "name", "owner", "metadata", "status", "created_at", "updated_at"],
+      indexes: ["owner", "status", "created_at"],
+      constraints: ["primary_key(id)", "foreign_key(owner)"],
+      isolation: "read_committed",
+      backfill: "required_before_launch"
+    };
+  }
+
+  async createProject(project = {}) {
+    const normalized = this.normalizeProject(project);
+    if (this.projects.has(normalized.id)) {
+      throw new Error(`Project already exists: ${normalized.id}`);
+    }
+    this.projects.set(normalized.id, normalized);
+    return normalized;
+  }
+
+  async getProject(id) {
+    return this.projects.get(String(id)) ?? null;
+  }
+
+  async saveRevision(projectId, entry = {}) {
+    const project = this.projects.get(String(projectId));
+    if (!project) {
+      throw new Error(`Project not found: ${projectId}`);
+    }
+    const revision = {
+      id: entry.id ?? randomUUID(),
+      revisionId: (project.revision ?? 0) + 1,
+      createdAt: ISO(),
+      ...entry
+    };
+    project.revision = revision.revisionId;
+    project.updatedAt = ISO();
+    project.audit = Array.isArray(project.audit) ? project.audit : [];
+    project.audit.push({ ...revision, type: entry.type ?? "revision" });
+    return revision;
+  }
+
+  async withTransaction(handler) {
+    const originalSnapshot = [...this.projects.entries()].map(([key, value]) => [key, JSON.parse(JSON.stringify(value))]);
+    try {
+      const result = await handler({
+        createProject: (project) => this.createProject(project),
+        getProject: (id) => this.getProject(id),
+        saveRevision: (projectId, entry) => this.saveRevision(projectId, entry),
+        listProjects: () => [...this.projects.values()]
+      });
+      return result;
+    } catch (error) {
+      this.projects.clear();
+      for (const [key, value] of originalSnapshot) {
+        this.projects.set(key, value);
+      }
+      throw error;
+    }
+  }
+}
+
+export class ManagedIdentityProvider extends ManagedIdentityService {
+  constructor({ issuer, audience, jwksUrl = null, signingSecret = null, clockSkewMs = 30_000, requiredTenant = null } = {}) {
+    super({ issuer, audience, signingSecret, clockSkewMs });
+    this.jwksUrl = jwksUrl;
+    this.requiredTenant = requiredTenant;
+  }
+
+  validateConfiguration() {
+    if (!this.issuer || !this.audience) {
+      throw new Error("Managed identity provider requires issuer and audience");
+    }
+    if (!this.jwksUrl && !this.signingSecret) {
+      throw new Error("Managed identity provider requires JWKS or a shared signing secret");
+    }
+    return {
+      issuer: this.issuer,
+      audience: this.audience,
+      jwksUrl: this.jwksUrl,
+      requiredTenant: this.requiredTenant
+    };
+  }
+
+  verifyToken(token, options = {}) {
+    const principal = super.verifyToken(token, options);
+    if (this.requiredTenant && principal.tenant !== this.requiredTenant) {
+      throw new Error("Tenant is not authorized for this resource");
+    }
+    return principal;
+  }
+}
+
+export class ManagedAuthorizationService {
+  constructor({ requiredTenant = null } = {}) {
+    this.requiredTenant = requiredTenant;
+  }
+
+  authorize(principal, required = {}) {
+    if (!principal) {
+      return false;
+    }
+
+    if (this.requiredTenant && principal.tenant !== this.requiredTenant) {
+      return false;
+    }
+
+    if (required.tenant && principal.tenant !== required.tenant) {
+      return false;
+    }
+
+    if (required.projectId && principal.project !== required.projectId) {
+      return false;
+    }
+
+    const requiredRoles = Array.isArray(required.roles) ? required.roles : [];
+    const requiredScopes = Array.isArray(required.scopes) ? required.scopes : [];
+    if (requiredRoles.length > 0 && !requiredRoles.some((role) => principal.roles.includes(role))) {
+      return false;
+    }
+    if (requiredScopes.length > 0 && !requiredScopes.every((scope) => principal.scopes.includes(scope))) {
+      return false;
+    }
+
+    return true;
+  }
+}
+
+export class VaultSecretProvider {
+  constructor({ environment = process.env, prefix = "SPECCRAFT_" } = {}) {
+    this.environment = environment;
+    this.prefix = prefix;
+  }
+
+  resolve(reference) {
+    if (!reference || typeof reference !== "string") {
+      throw new TypeError("A secret reference is required");
+    }
+
+    const normalized = reference.trim();
+    const envKey = normalized.replace(/^secret:\/\//, "");
+    const candidates = [
+      envKey,
+      `${this.prefix}${envKey}`,
+      envKey.toUpperCase(),
+      `${this.prefix}${envKey.toUpperCase()}`
+    ];
+
+    for (const key of candidates) {
+      if (Object.prototype.hasOwnProperty.call(this.environment, key)) {
+        const value = this.environment[key];
+        if (value && value !== "") {
+          return value;
+        }
+      }
+    }
+
+    throw new Error(`Secret is not available: ${reference}`);
+  }
+
+  set(reference, value) {
+    if (!reference || typeof reference !== "string") {
+      throw new TypeError("A secret reference is required");
+    }
+    const safeValue = String(value ?? "");
+    if (safeValue === "") {
+      throw new Error(`Secret is empty: ${reference}`);
+    }
+    const trimmed = reference.trim();
+    const key = trimmed.replace(/^secret:\/\//, "");
+    this.environment[key] = safeValue;
+    this.environment[`${this.prefix}${key}`] = safeValue;
+    return safeValue;
+  }
+
+  rotate(reference, value) {
+    return this.set(reference, value);
+  }
+
+  revoke(reference) {
+    const trimmed = String(reference ?? "").trim();
+    if (!trimmed) {
+      throw new TypeError("A secret reference is required");
+    }
+    const key = trimmed.replace(/^secret:\/\//, "");
+    delete this.environment[key];
+    delete this.environment[`${this.prefix}${key}`];
+    delete this.environment[key.toUpperCase()];
+    delete this.environment[`${this.prefix}${key.toUpperCase()}`];
+    return true;
+  }
+
+  redact(value) {
+    return typeof value === "string" && value.trim() ? "[REDACTED]" : null;
+  }
+}
+
+export class EnvironmentSecretProvider extends VaultSecretProvider {
+  constructor(environment = process.env) {
+    super({ environment });
+  }
+}
+
+export class DistributedRateLimiter {
+  constructor({ windowMs = 60_000, maxRequests = 100, store = new Map() } = {}) {
+    if (!Number.isInteger(windowMs) || windowMs <= 0) {
+      throw new TypeError("windowMs must be a positive integer");
+    }
+    if (!Number.isInteger(maxRequests) || maxRequests <= 0) {
+      throw new TypeError("maxRequests must be a positive integer");
+    }
+    this.windowMs = windowMs;
+    this.maxRequests = maxRequests;
+    this.store = store;
+  }
+
+  allow(key, cost = 1, options = {}) {
+    const bucketKey = String(key ?? "default");
+    const units = Number.isInteger(cost) ? cost : 1;
+    if (units < 1) {
+      throw new TypeError("Rate-limit cost must be at least 1");
+    }
+
+    const now = Date.now();
+    const existing = this.store.get(bucketKey);
+    const windowStart = existing && existing.windowStart + this.windowMs > now ? existing.windowStart : now;
+    const bucket = {
+      windowStart,
+      count: existing && existing.windowStart + this.windowMs > now ? existing.count : 0
+    };
+
+    const limit = options.limit ?? this.maxRequests;
+    if (bucket.count + units > limit) {
+      const retryAfterMs = Math.max(this.windowMs - (now - bucket.windowStart), 0);
+      return { allowed: false, remaining: 0, retryAfterMs, limit };
+    }
+
+    bucket.count += units;
+    this.store.set(bucketKey, bucket);
+    return { allowed: true, remaining: Math.max(limit - bucket.count, 0), retryAfterMs: 0, limit };
+  }
+
+  peek(key, options = {}) {
+    const bucketKey = String(key ?? "default");
+    const existing = this.store.get(bucketKey);
+    const now = Date.now();
+    if (!existing || existing.windowStart + this.windowMs <= now) {
+      return { allowed: true, remaining: options.limit ?? this.maxRequests, retryAfterMs: 0, limit: options.limit ?? this.maxRequests };
+    }
+    return { allowed: true, remaining: Math.max((options.limit ?? this.maxRequests) - existing.count, 0), retryAfterMs: Math.max(this.windowMs - (now - existing.windowStart), 0), limit: options.limit ?? this.maxRequests };
+  }
+}
+
+export class ManagedOutbox {
+  constructor(filePath, options = {}) {
+    this.queue = new FileJobQueue(filePath, options);
+  }
+
+  async publish(type, payload, idempotencyKey) {
+    return this.queue.enqueue(type, payload, idempotencyKey ?? randomUUID());
+  }
+
+  async drain(handler) {
+    const queued = await this.queue.list();
+    for (const job of queued) {
+      if (job.status !== "queued" && job.status !== "retrying") continue;
+      try {
+        const result = await handler(job);
+        await this.queue.complete(job.id, result);
+      } catch (error) {
+        await this.queue.fail(job.id, error instanceof Error ? error.message : String(error));
+      }
+    }
+    return queued;
+  }
+}
+
+export class SecurityReviewRunner {
+  constructor(rules = []) {
+    this.rules = [
+      {
+        id: "secret-literal",
+        severity: "high",
+        pattern: /(?:AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z\-_]{35}|gh[pousr]_[A-Za-z0-9]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|token\s*[:=]\s*["'][^"']+["'])/i,
+        summary: "Potential secret or credential literal present in code or config."
+      },
+      {
+        id: "unsafe-sql",
+        severity: "high",
+        pattern: /SELECT\s+.*\s+FROM\s+.*\s+WHERE\s+.*\$\{|\bEXEC\s*\(|\bsp_executesql\b/i,
+        summary: "Potential SQL injection or unsafe dynamic query pattern."
+      },
+      {
+        id: "path-traversal",
+        severity: "medium",
+        pattern: /\.\.[\\/]|%2e%2e[\\/]/i,
+        summary: "Path traversal or unsafe relative path pattern detected."
+      },
+      {
+        id: "http-insecure",
+        severity: "medium",
+        pattern: /https?:\/\/(?!localhost|127\.0\.0\.1|0\.0\.0\.0)/i,
+        summary: "Remote provider or service call is not restricted to HTTPS in a production configuration."
+      },
+      ...rules
+    ];
+  }
+
+  scanText(text, context = "source") {
+    const findings = [];
+    for (const rule of this.rules) {
+      const matches = text.match(rule.pattern);
+      if (!matches) continue;
+      findings.push({
+        id: rule.id,
+        severity: rule.severity,
+        context,
+        summary: rule.summary,
+        match: matches[0].slice(0, 180)
+      });
+    }
+    return {
+      context,
+      findings,
+      passed: findings.length === 0,
+      riskLevel: findings.some((finding) => finding.severity === "high") ? "high" : findings.length > 0 ? "medium" : "low"
+    };
+  }
+
+  scanFiles(files) {
+    return files.map(({ path, content }) => this.scanText(content, path));
   }
 }

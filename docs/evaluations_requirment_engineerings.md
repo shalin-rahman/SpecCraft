@@ -86,7 +86,7 @@ TEST-001
 
 This introduced the important idea of **traceability**.
 
-We don't just want to know what the requirement says—we want to know what design, implementation, and test relate to it.
+The analysis does not stop at the written requirement; it also considers the related design, implementation, and test artifacts.
 
 But maintaining these relationships manually can itself become costly.
 
@@ -186,27 +186,21 @@ Git history
 Previous agent sessions
 ```
 
-### Why this leads to your research
+### Why this problem matters
 
-This gives you the motivation for the project:
+The motivation for the project is straightforward:
 
 > **As software implementation becomes increasingly AI-assisted, preserving the project's engineering knowledge becomes an increasingly important concern.**
 
-The research isn't simply:
+The project is not limited to the claim that AI can generate code. That capability is already established.
 
-> "AI can write code."
-
-That is already established.
-
-Your question is closer to:
+The central question is:
 
 > **How can software intent, requirements, rules, decisions, implementation relationships and evidence remain structured and reusable while development is performed by humans and different AI agents?**
 
-### What the audience should take away
+### Key takeaway
 
-By the end of Image 1, they should understand:
-
-**Software development has become increasingly automated, but the knowledge describing what the software is supposed to mean remains distributed across many artifacts and interactions.**
+This image establishes that software development has become increasingly automated, but the knowledge describing what the software is supposed to mean remains distributed across many artifacts and interactions.
 
 ---
 
@@ -214,17 +208,13 @@ By the end of Image 1, they should understand:
 
 ### What this image is about
 
-This image prevents a very important Master's-defense question:
+This image addresses a common question:
 
 > **"Don't tools already do this?"**
 
-Your answer should be:
+The answer is yes: many components already exist. That is important, because the research is not trying to invent these capabilities from scratch. It investigates how they can participate in a **persistent engineering-knowledge layer**.
 
-**Yes—many pieces already exist.**
-
-And that's actually important to your research.
-
-You are not claiming to invent:
+Examples include:
 
 * requirements management
 * AI coding
@@ -234,8 +224,6 @@ You are not claiming to invent:
 * code graphs
 * MCP
 * automated testing
-
-Instead, you're investigating how these capabilities can participate in a **persistent engineering-knowledge layer**.
 
 ---
 
@@ -268,7 +256,7 @@ Test
 
 These systems demonstrate that **persistent structured requirements and traceability are established engineering concepts**.
 
-They are therefore part of the technological foundation of your research rather than competitors you need to "defeat."
+They are therefore part of the technological foundation of the research rather than competitive systems that must be replaced.
 
 ---
 
@@ -302,9 +290,7 @@ Tests
 
 This demonstrates the emergence of **agentic software development**.
 
-But the agent is usually operating as a development participant.
-
-Your project asks a different question:
+The agent typically operates as a development participant, however, and the central question is different:
 
 > What persistent project-level knowledge should the agent consume?
 
@@ -312,7 +298,7 @@ Your project asks a different question:
 
 ## Specification-driven development
 
-Then we have systems and workflows such as:
+The landscape also includes systems and workflows such as:
 
 ### GitHub Spec Kit
 
@@ -395,7 +381,7 @@ Tools / Files / Services / Knowledge
 
 ## So what is missing?
 
-This is where you should be careful.
+This is where careful framing is required.
 
 Don't say:
 
@@ -425,7 +411,7 @@ Evidence
 
 The proposed research is therefore **compositional**, not necessarily a replacement for these technologies.
 
-### What the audience should take away
+### Key takeaway
 
 > **The project is not trying to reinvent requirements tools, coding agents or SDD. It investigates the persistent knowledge layer that can connect their outputs and make project meaning reusable across development contexts.**
 
@@ -433,11 +419,11 @@ The proposed research is therefore **compositional**, not necessarily a replacem
 
 # 3. Proposed Architecture — Persistent Specification & Engineering Knowledge
 
-This is the **central image of the entire project**.
+This is the **central image of the project**.
 
 Images 1 and 2 establish the problem.
 
-Image 3 explains your answer.
+Image 3 presents the proposed response.
 
 ---
 
@@ -578,7 +564,7 @@ Imagine the project has:
 * thousands of source files
 * thousands of tests
 
-You don't want to put all of that into every AI prompt.
+The system should avoid placing the entire project context into every AI prompt.
 
 Instead:
 
@@ -684,7 +670,7 @@ or:
 
 This is where **traceability + impact analysis + drift detection** become useful.
 
-### What the audience should take away
+### Key takeaway
 
 > **The proposed system is not another coding agent. It is a persistent, structured representation of project engineering knowledge that AI agents and development tools can consume and update.**
 
@@ -694,17 +680,13 @@ This is where **traceability + impact analysis + drift detection** become useful
 
 ### What this image is about
 
-This image is different from Image 1.
+This image follows the background context established in the earlier section.
 
-Image 1 asks:
+It shifts from historical context to a more concrete question:
 
-> **How did requirements engineering evolve?**
+> **What engineering problems should the system be evaluated against?**
 
-Image 4 asks:
-
-> **What engineering problems do we actually need to evaluate and support?**
-
-This gives your research a more rigorous academic foundation.
+This gives the research a more rigorous foundation.
 
 ---
 
@@ -783,7 +765,7 @@ A stakeholder or authorized reviewer resolves it.
 
 ## Problem 4 — Requirement → implementation
 
-Suppose you have:
+Suppose a requirement includes:
 
 ```text
 REQ-104
@@ -856,7 +838,7 @@ Tests
 Documentation
 ```
 
-This gives you an objective evaluation area:
+This creates a clear evaluation question:
 
 **Can the system identify relevant downstream artifacts?**
 
@@ -890,7 +872,7 @@ Human validation
 
 The evaluation can measure how closely the reconstructed specification agrees with an expert-produced baseline.
 
-### What the audience should take away
+### Key takeaway
 
 > **The project can be evaluated using concrete engineering problems—ambiguity, incompleteness, contradiction, traceability, impact analysis, drift and brownfield reconstruction—rather than simply asking whether an AI "looks useful."**
 
@@ -900,13 +882,11 @@ The evaluation can measure how closely the reconstructed specification agrees wi
 
 ### What this image is about
 
-This image answers:
+This image addresses the question:
 
 > **Why introduce specification as an explicit development artifact?**
 
-It is important because otherwise your supervisor may ask:
-
-> "Why not simply give better prompts to Codex or Claude?"
+A common objection is that better prompts or stronger model instructions might be enough on their own.
 
 ---
 
@@ -970,17 +950,13 @@ Tools such as:
 
 demonstrate different implementations of specification-centered workflows.
 
-You shouldn't present them as identical.
-
-Instead:
-
-> "These systems demonstrate the broader movement toward making specifications active development artifacts."
+These tools are not interchangeable. They represent related but distinct approaches within the broader movement toward making specifications active development artifacts.
 
 ---
 
-## Your research extension
+## Research extension
 
-Your proposed question is then:
+The research question is:
 
 > **Can the specification become a persistent project-level knowledge representation that remains useful beyond one particular SDD workflow?**
 
@@ -1003,13 +979,9 @@ Web UI
 
 The distinction is important.
 
-You're not saying:
+The research does not argue that a specification system replaces SDD. It examines whether a **shared knowledge layer can sit underneath different SDD and agent workflows.**
 
-> "My specification system replaces SDD."
-
-You're investigating whether a **shared knowledge layer can sit underneath different SDD and agent workflows.**
-
-### What the audience should take away
+### Key takeaway
 
 > **SDD makes software intent explicit. This research investigates how that intent can become persistent, structured, traceable and reusable across development environments.**
 
@@ -1019,7 +991,7 @@ You're investigating whether a **shared knowledge layer can sit underneath diffe
 
 ### What this image is about
 
-This is where you demonstrate that the project isn't only useful for building a new application.
+This image demonstrates that the project is not limited to greenfield development.
 
 It can address three different software situations.
 
@@ -1074,7 +1046,7 @@ with:
 * Git history
 * incomplete documentation
 
-You can analyze these sources to construct **candidate specifications**.
+These sources can be analyzed to construct **candidate specifications**.
 
 For example:
 
@@ -1153,9 +1125,9 @@ CONTINUOUS
 Maintain knowledge
 ```
 
-This is a particularly strong conceptual point for your project.
+This is a particularly strong conceptual point for the research.
 
-### What the audience should take away
+### Key takeaway
 
 > **The same knowledge representation can support creation, reconstruction and continuous maintenance of software engineering knowledge.**
 
@@ -1165,9 +1137,9 @@ This is a particularly strong conceptual point for your project.
 
 ### What this image is about
 
-This is probably the easiest image for a non-specialist audience to understand.
+This is often the clearest image for a non-specialist audience.
 
-Instead of explaining the entire architecture abstractly, you follow **one requirement**.
+Instead of explaining the architecture abstractly, the presentation follows **one requirement**.
 
 ---
 
@@ -1257,7 +1229,7 @@ This makes the behavior more precise than the original sentence alone.
 
 ## Step 5 — API
 
-Now we can associate the requirement with:
+The requirement can then be associated with:
 
 ```text
 POST /members/{id}/close
@@ -1284,7 +1256,7 @@ update status
 record audit event
 ```
 
-Now we can establish:
+The relationship can then be represented as:
 
 ```text
 Requirement
@@ -1389,19 +1361,19 @@ Documentation
 
 This demonstrates why the knowledge layer is more than a document repository.
 
-### What the audience should take away
+### Key takeaway
 
 > **A single natural-language requirement can become a connected engineering object linking intent, rules, workflow, implementation, tests and evidence.**
 
-And this is probably the best image to use when someone asks:
+This is often the clearest image to use when asked:
 
-> "Okay, but what does your system actually do?"
+> "Okay, but what does the system actually do?"
 
 ---
 
-# How the 7 images form one complete Master's presentation
+# How the seven images form one coherent research presentation
 
-I would arrange them in this order:
+A suitable ordering is:
 
 ```text
                     RESEARCH STORY
@@ -1424,13 +1396,13 @@ I would arrange them in this order:
                       ↓
         ┌─────────────────────────────┐
         │ 4. EVALUATION PROBLEMS      │
-        │ What exactly should we      │
-        │ evaluate?                   │
+        │ What questions should be     │
+        │ evaluated?                  │
         └─────────────┬───────────────┘
                       ↓
         ┌─────────────────────────────┐
         │ 3. PROPOSED ARCHITECTURE    │
-        │ What are we proposing?      │
+        │ What is being proposed?     │
         └─────────────┬───────────────┘
                       ↓
         ┌─────────────────────────────┐
@@ -1456,9 +1428,9 @@ There is also a useful distinction between the seven:
 | **6. Three Modes**    | How does the approach work for new and existing systems? |
 | **7. Worked Example** | What happens to one real requirement?                    |
 
-### The strongest academic story
+### The strongest academic framing
 
-The overall argument becomes:
+The overall research argument is:
 
 > **Software engineering has progressively moved from informal communication toward structured requirements, traceability, executable tests, automation and now AI-assisted development.**
 
@@ -1482,8 +1454,3 @@ The overall argument becomes:
 
 > **The approach can support greenfield projects, brownfield reconstruction and continuous development.**
 
-↓
-
-> **A single requirement can be traced from human intent through rule, workflow, API, implementation, test and evidence.**
-
-That is a much more defensible Master's-project narrative than presenting the system as simply **“an AI that generates specifications.”**

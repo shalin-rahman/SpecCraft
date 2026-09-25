@@ -52,6 +52,7 @@ Open `http://localhost:8000`.
 - [Production readiness specification](docs/production-readiness-specification.md)
 - [Production implementation plan](docs/production-implementation-plan.md)
 - [Production service specification](docs/production-service-specification.md)
+- [Managed stack selection](docs/managed-stack-selection.md)
 - [Production delivery backlog](docs/production-delivery-backlog.md)
 - [Launch readiness plan](docs/launch-readiness-plan.md)
 - [Security review runbook](docs/security-review-runbook.md)
