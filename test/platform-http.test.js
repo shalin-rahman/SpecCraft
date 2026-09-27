@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { request as httpRequest } from "node:http";
@@ -130,6 +130,46 @@ test("HTTP API applies loopback and configured-token authentication", async () =
     await new Promise((resolve) => server.close(resolve));
     if (previousToken === undefined) delete process.env.PLATFORM_TOKEN;
     else process.env.PLATFORM_TOKEN = previousToken;
+  }
+});
+
+test("rejects a repository junction whose canonical target escapes the configured root", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "speccraft-http-junction-"));
+  const allowed = join(root, "allowed");
+  const outside = join(root, "outside");
+  const link = join(allowed, "linked-repository");
+  await mkdir(allowed);
+  await mkdir(outside);
+  await writeFile(join(outside, "private.js"), "export const privateValue = 'outside';\n");
+  try {
+    await symlink(outside, link, "junction");
+  } catch (error) {
+    await rm(root, { recursive: true, force: true });
+    if (["EPERM", "EACCES", "ENOTSUP", "EINVAL"].includes(error.code)) {
+      t.skip(`Junction creation is unavailable: ${error.code}`);
+      return;
+    }
+    throw error;
+  }
+
+  const previousRepositoryRoot = process.env.PLATFORM_REPOSITORY_ROOT;
+  process.env.PLATFORM_REPOSITORY_ROOT = allowed;
+  const server = createPlatformServer();
+  try {
+    const baseUrl = await listen(server);
+    const response = await fetch(`${baseUrl}/api/scan`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ root: link })
+    });
+    const result = await response.json();
+    assert.equal(response.status, 400);
+    assert.match(result.error, /outside the configured repository root/);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    if (previousRepositoryRoot === undefined) delete process.env.PLATFORM_REPOSITORY_ROOT;
+    else process.env.PLATFORM_REPOSITORY_ROOT = previousRepositoryRoot;
+    await rm(root, { recursive: true, force: true });
   }
 });
 

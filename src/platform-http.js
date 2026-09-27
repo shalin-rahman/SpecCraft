@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
 import { createHash, timingSafeEqual } from "node:crypto";
+import { realpath } from "node:fs/promises";
 import {
   analyzeRepository,
   compileRepositoryContext,
@@ -98,9 +99,15 @@ export function createPlatformServer({
     return safeTokenMatches(authorization.slice(7), expected);
   }
 
-  function repositoryPath(input) {
-    const configuredRoot = resolve(process.env.PLATFORM_REPOSITORY_ROOT ?? process.cwd());
-    const requestedRoot = resolve(String(input.root ?? ""));
+  async function repositoryPath(input) {
+    const configuredPath = resolve(process.env.PLATFORM_REPOSITORY_ROOT ?? process.cwd());
+    const requestedPath = resolve(String(input.root ?? ""));
+    const lexicalRelativePath = relative(configuredPath, requestedPath);
+    if (isAbsolute(lexicalRelativePath) || lexicalRelativePath === ".." || lexicalRelativePath.startsWith(`..${sep}`)) {
+      throw new Error("Repository path is outside the configured repository root");
+    }
+    const configuredRoot = await realpath(configuredPath);
+    const requestedRoot = await realpath(requestedPath);
     const relativePath = relative(configuredRoot, requestedRoot);
     if (isAbsolute(relativePath) || relativePath === ".." || relativePath.startsWith(`..${sep}`)) {
       throw new Error("Repository path is outside the configured repository root");
@@ -135,7 +142,7 @@ export function createPlatformServer({
 
       const input = await body(request, maxBodyBytes);
       if (url.pathname === "/api/scan") {
-        latest = await analyzeRepository(repositoryPath(input));
+        latest = await analyzeRepository(await repositoryPath(input));
         return json(response, 200, latest);
       }
       if (url.pathname === "/api/reconstruct") {
@@ -144,7 +151,7 @@ export function createPlatformServer({
       }
       if (url.pathname === "/api/drift") {
         if (!latest) return json(response, 409, { error: "Scan a repository first" });
-        return json(response, 200, detectDrift(latest, await analyzeRepository(repositoryPath(input))));
+        return json(response, 200, detectDrift(latest, await analyzeRepository(await repositoryPath(input))));
       }
       if (url.pathname === "/api/context") {
         if (!latest) return json(response, 409, { error: "Scan a repository first" });

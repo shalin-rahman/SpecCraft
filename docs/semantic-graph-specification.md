@@ -2,6 +2,8 @@
 
 This is a target specification. The current repository scanner builds a file/symbol code graph; it does not yet connect canonical requirement, rule, workflow, API, code, and test records into one semantic graph. Current behavior and the implementation gap are recorded in the [platform specification](platform-specification.md) and [knowledge-core plan](semantic-graph-implementation-plan.md).
 
+The local reference implementation now validates project trace links with the typed knowledge-graph contract, retains API-contract, permission, and decision project collections, and applies graph defaults for optional link metadata. These improvements do not make project trace data canonical or combine it with the repository code graph. JavaScript/TypeScript relative import resolution is limited to scanned files; Python parsing remains lexical.
+
 ## Purpose
 
 SpecCraft needs a canonical knowledge graph that links business intent to implementation and verification without treating code as the source of truth. The graph should describe how a requirement becomes a rule, a workflow, an API, code, tests, and evidence.

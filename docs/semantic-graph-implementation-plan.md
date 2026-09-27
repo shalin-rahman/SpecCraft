@@ -8,6 +8,17 @@ Production deployment, managed persistence, production identity integration, ext
 
 ## Verified baseline and first repair pass (2026-09-26)
 
+### Graph correctness and deterministic observations (2026-09-26)
+
+- Project normalization retains API contracts, permissions, and decisions. Project trace graphs pass through the typed graph validator, so supported relationship types, endpoint construction, duplicate links, and optional metadata defaults follow one contract.
+- Repository traversal sorts entries before applying the 2,000-file cap. Same-tree scans therefore select the same ordered files and revision.
+- Relative JavaScript/TypeScript imports resolve only against the scan inventory. Package/unresolved imports stay external.
+- Relative module observations include their importer in the node ID, and resolved imports add direct file-to-file edges so traversal can follow local dependencies. Package module IDs retain their existing form.
+- Python IDs include declaration line numbers so repeated names do not collide. Python extraction remains lexical.
+- Graph traversal builds sorted incoming/outgoing indexes once per invocation and preserves breadth-first paths, direction, limits, and evidence behavior.
+- Feature artifacts and regression coverage are in `specs/002-graph-correctness/`.
+- Later security and import-identity follow-ups are tracked in `specs/003-secure-scan-roots/` and `specs/004-resolve-import-identities/`.
+
 - Initial sandboxed `npm test` could not spawn the Node test workers (`EPERM`). Outside the sandbox, the working tree initially ran 22 tests: 19 passed and 3 failed. The failures were: code graph node type no longer matched the public `symbol` contract (also leaving reconstruction empty), and unsupported-language parser input was rejected instead of returning its explicit diagnostic. Those compatibility regressions are repaired.
 - After the repair and new parser/HTTP contract tests, `npm test`: 25 passed, 0 failed. There is no configured lint, type-check, or build script.
 - `package.json` defines `test`, `test:unit`, and `platform`; no lint/build script is present.
@@ -22,7 +33,7 @@ Production deployment, managed persistence, production identity integration, ext
 | Area | Current verified state | Target for this plan | Gap |
 | --- | --- | --- | --- |
 | Knowledge model | Validated requirement model plus a separate typed graph model with provenance defaults and human-gated review transitions | Validated typed entities with provenance and review state | Models are not fully unified; entity-specific lifecycle and durable review history are incomplete |
-| Graph | Typed node/edge validation, controlled vocabularies, deterministic traversal, and basic coverage report; repository graph remains file/symbol-centric | Typed, deterministic, explainable knowledge graph | Separate code and knowledge graphs; edge direction is caller-defined; no unified canonical project graph |
+| Graph | Typed node/edge validation, controlled vocabularies, deterministic indexed traversal, and basic coverage report; repository graph remains file/symbol-centric | Typed, deterministic, explainable knowledge graph | Separate code and knowledge graphs; edge direction is caller-defined; no unified canonical project graph |
 | Parser | Registry-driven Babel AST extraction for JavaScript/TypeScript; conservative lexical Python extraction | Registry-driven parsing with normalized observations/diagnostics | No full Python AST, symbol resolution, robust scope handling, or parser package for other languages |
 | Traceability | `analyzeTraceability` reports reachable implementation/verification nodes and paths | Forward/reverse implementation and verification coverage | Repository analysis has no canonical project graph; limited relationship semantics and artifact-gap reporting |
 | Reconstruction | One low-confidence candidate per symbol | Evidence-backed typed candidates with rationale and related artifacts | Candidate is not a domain proposal and review data is sparse |
@@ -38,8 +49,8 @@ Production deployment, managed persistence, production identity integration, ext
 | --- | --- | --- |
 | Requirements and rules | Requirement model and analysis; rules/workflows remain loose project records | Partial; not all entity-specific validation or lifecycle semantics exist |
 | Workflows and API contracts | Demo/project records and syntactic route observations | Partial; route observations are not canonical API contracts |
-| Graph and code graph | Separate typed knowledge graph and parser-driven code graph | Partial; no unified graph, imports are external module observations, call resolution is limited |
-| Traceability and impact | Basic graph coverage and multi-hop traversal; requirement impact traverses trace links | Partial; path direction and edge meaning are caller-defined, freshness/authority not integrated consistently |
+| Graph and code graph | Separate typed knowledge graph and parser-driven code graph; relative imports resolve only against scanned files | Partial; no unified graph, call resolution is limited |
+| Traceability and impact | Typed project trace normalization, metadata defaults, and indexed bounded multi-hop traversal | Partial; path direction and edge meaning are caller-defined; graph remains separate from the repository code graph |
 | Drift and synchronization | File hash drift; revisioned generic store; pending in-memory HTTP proposals | Partial; no semantic drift or full approve/apply/verify workflow |
 | Reconstruction and provenance | Low-confidence symbol candidates with source location | Partial; no multi-artifact synthesis; candidate links do not become canonical automatically |
 | Context and providers | Query-based repository context, requirement context helper, provider routing | Partial; no bounded unified evidence-aware task compiler |

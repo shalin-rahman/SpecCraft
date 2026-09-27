@@ -17,15 +17,15 @@ This document defines the next platform boundary beyond the MVP. It covers repos
 
 ### Repository scanner
 
-Scans an explicit repository root and its descendants. The current scanner recognizes JavaScript, TypeScript, and Python source files; skips `.git`, `node_modules`, `dist`, `build`, `coverage`, and `.venv`; skips a small explicit set of local secret filenames; and caps each file at 512 KB and each scan at 2,000 files. This is not general secret detection. Results contain relative paths, file hashes, language, and size.
+Scans an explicit repository root and its descendants. The local API resolves both the configured boundary and requested directory through filesystem links before checking containment, then scans the canonical requested path. A symlink or junction targeting outside the configured root is rejected. The scanner recognizes JavaScript, TypeScript, and Python source files; sorts directory entries before applying its 2,000-file cap; skips `.git`, `node_modules`, `dist`, `build`, `coverage`, and `.venv`; skips a small explicit set of local secret filenames; and caps each file at 512 KB. This is not general secret detection. Results contain relative paths, file hashes, language, and size. The scan order and revision are stable for the same tree.
 
 ### Symbol extractor
 
-The current reference implementation uses Babel AST parsing for JavaScript and TypeScript and conservative lexical extraction for Python. It records symbols and line evidence, plus imports, exports, test declarations, and selected route calls for JavaScript/TypeScript. Python extraction is lexical and reports that limitation. Parse errors and unsupported languages produce diagnostics. It does not produce source snippets, resolve arbitrary symbols, or establish business meaning.
+The current reference implementation uses Babel AST parsing for JavaScript and TypeScript and conservative lexical extraction for Python. It records symbols and line evidence, plus imports, exports, test declarations, and selected route calls for JavaScript/TypeScript. Python declaration IDs include their source line to avoid collisions between repeated names; extraction remains lexical and reports that limitation. Parse errors and unsupported languages produce diagnostics. It does not produce source snippets, resolve arbitrary symbols, or establish business meaning.
 
 ### Code graph
 
-The current repository code graph contains file and symbol nodes, plus observed module, API route, and test nodes where detected. Its edges include `defines`, `imports`, `exposes`, `tests`, and limited same-file `calls`; call edges have low confidence and unresolved calls are omitted. A separate knowledge-graph module validates typed nodes and relationships and supports traversal, but repository analysis does not yet merge canonical requirement nodes into its code graph. The snapshot is not immutable and its revision is the scanned-file content hash.
+The current repository code graph contains file and symbol nodes, plus observed module, API route, and test nodes where detected. Its edges include `defines`, `imports`, `exposes`, `tests`, and limited same-file `calls`; call edges have low confidence and unresolved calls are omitted. Relative JavaScript/TypeScript imports resolve only against files in the current scan (exact path, supported extension, or `index` candidate); unresolved and package imports remain external observations. Relative module IDs include the importer path, and resolved imports link the importer directly to the scanned dependency file as well as retaining the module observation. A separate knowledge-graph module validates typed nodes and relationships, builds adjacency indexes per traversal, and supports bounded traversal. Project trace graphs use that validation contract and retain API-contract, permission, and decision collections. Repository analysis does not yet merge canonical requirement nodes into its code graph. The snapshot is not immutable and its revision is the scanned-file content hash.
 
 ### Brownfield reconstruction
 
@@ -39,7 +39,9 @@ Current drift detection compares scanned file hashes and reports added, removed,
 
 Synchronization is event-based. A proposal contains an operation, source evidence, expected revision, and author. Applying a proposal requires the expected revision to match and produces a new revision. Conflicts are rejected, not silently merged.
 
-The local reference implementation provides this contract through `KnowledgeStore`. The HTTP proposal route records pending collaboration proposals; a production persistence adapter must apply approved proposals through the same revision check.
+The local reference implementation provides this contract through `KnowledgeStore`. The HTTP proposal route records pending collaboration proposals; a production persistence adapter must apply approved proposals through the same revision check. `ManagedIdentityProvider` rejects construction unless issuer/audience are present and exactly one of HTTPS JWKS or a shared signing secret is configured. It remains a local reference adapter; the HTTP API does not use it for authentication.
+
+The local `FileJobQueue` serializes cooperating writers with a filesystem lock, recovers unchanged malformed locks after the stale interval, uses unique temporary files and atomic replacement, and requires a current claim token for completion/failure. The file collaboration and project repositories use the same local lock and exclusive temporary-file pattern for mutations. These controls support cooperating local processes; they are not distributed coordination guarantees and do not replace managed production infrastructure.
 
 ### Multi-agent adapters
 

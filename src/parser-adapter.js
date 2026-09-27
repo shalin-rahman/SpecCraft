@@ -182,7 +182,7 @@ function parsePythonSource(file) {
     const kind = isClass ? "class" : classScopes.length ? "method" : "function";
     const line = index + 1;
     result.symbols.push({
-      id: `${file.path}#${name}`,
+      id: `${file.path}#${name}@${line}`,
       name,
       kind,
       file: file.path,

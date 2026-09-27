@@ -207,6 +207,21 @@ export function traverseKnowledgeGraph(graph, startId, {
   const nodesById = new Map(graph.nodes.map((node) => [node.id, node]));
   if (!nodesById.has(startId)) throw new Error(`Knowledge node not found: ${startId}`);
 
+  const outgoing = new Map();
+  const incoming = new Map();
+  for (const [order, edge] of graph.edges.entries()) {
+    if (!outgoing.has(edge.from)) outgoing.set(edge.from, []);
+    if (!incoming.has(edge.to)) incoming.set(edge.to, []);
+    outgoing.get(edge.from).push({ edge, nextId: edge.to, traversal: "forward", order });
+    incoming.get(edge.to).push({ edge, nextId: edge.from, traversal: "reverse", order });
+  }
+  const compareAdjacent = (left, right) =>
+    left.nextId.localeCompare(right.nextId) ||
+    left.edge.type.localeCompare(right.edge.type) ||
+    left.order - right.order;
+  for (const edges of outgoing.values()) edges.sort(compareAdjacent);
+  for (const edges of incoming.values()) edges.sort(compareAdjacent);
+
   const queue = [{
     id: startId,
     path: [startId],
@@ -219,23 +234,14 @@ export function traverseKnowledgeGraph(graph, startId, {
   const seen = new Set([startId]);
   const results = [];
 
-  while (queue.length > 0) {
-    const current = queue.shift();
+  for (let queueIndex = 0; queueIndex < queue.length; queueIndex += 1) {
+    const current = queue[queueIndex];
     if (current.path.length - 1 >= maxDepth) continue;
 
-    const adjacent = graph.edges.flatMap((edge) => {
-      const matchesOutgoing = edge.from === current.id && direction !== "incoming";
-      const matchesIncoming = edge.to === current.id && direction !== "outgoing";
-      if (!matchesOutgoing && !matchesIncoming) return [];
-      return [{
-        edge,
-        nextId: matchesOutgoing ? edge.to : edge.from,
-        traversal: matchesOutgoing ? "forward" : "reverse"
-      }];
-    }).sort((left, right) =>
-      left.nextId.localeCompare(right.nextId) ||
-      left.edge.type.localeCompare(right.edge.type)
-    );
+    const adjacent = [
+      ...(direction !== "incoming" ? outgoing.get(current.id) ?? [] : []),
+      ...(direction !== "outgoing" ? incoming.get(current.id) ?? [] : [])
+    ].sort(compareAdjacent);
 
     for (const { edge, nextId, traversal } of adjacent) {
       if (seen.has(nextId)) continue;

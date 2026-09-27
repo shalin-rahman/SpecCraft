@@ -75,6 +75,54 @@ test("compiles context and reports connected impact", () => {
   assert.equal(context.contextPackage.requirements[0].id, "REQ-001");
 });
 
+test("preserves project collections and normalizes trace links through the graph contract", () => {
+  const project = createSpecProject({
+    name: "Records",
+    requirements: [{ id: "REQ-1", title: "A", description: "A requirement" }],
+    apiContracts: [{ id: "API-1", requirementId: "REQ-1" }],
+    permissions: [{ id: "PERM-1", requirementId: "REQ-1" }],
+    decisions: [{ id: "DEC-1", requirementId: "REQ-1" }],
+    traceLinks: [
+      { from: "REQ-1", to: "API-1", type: "exposes" },
+      { from: "REQ-1", to: "PERM-1", type: "authorized-by", freshness: "stale", reviewState: "stale" },
+      { from: "REQ-1", to: "DEC-1", type: "derived-from", confidence: "high", evidence: ["decision.md#1"] },
+      { from: "REQ-1", to: "src/inferred.ts", type: "implemented-in" }
+    ]
+  });
+
+  assert.equal(project.apiContracts[0].id, "API-1");
+  assert.equal(project.permissions[0].id, "PERM-1");
+  assert.equal(project.decisions[0].id, "DEC-1");
+  const impact = calculateImpact(project, "REQ-1");
+  assert.equal(impact.artifacts.find((item) => item.id === "API-1").freshness, "current");
+  assert.equal(impact.artifacts.find((item) => item.id === "PERM-1").freshness, "stale");
+  assert.deepEqual(impact.artifacts.find((item) => item.id === "DEC-1").evidence, ["decision.md#1"]);
+  assert.equal(impact.artifacts.find((item) => item.id === "src/inferred.ts").node.type, "file");
+});
+
+test("rejects unsupported and duplicate project trace relationships", () => {
+  assert.throws(() => calculateImpact(createSpecProject({
+    name: "Missing start",
+    traceLinks: [{ from: "REQ-1", to: "CODE-1", type: "implements" }]
+  }), "UNKNOWN"), /Knowledge node not found/);
+  const unsupported = createSpecProject({
+    name: "Unsupported relationship",
+    requirements: [{ id: "REQ-1", title: "A", description: "A requirement" }],
+    traceLinks: [{ from: "REQ-1", to: "CODE-1", type: "made-up" }]
+  });
+  assert.throws(() => calculateImpact(unsupported, "REQ-1"), /Unsupported knowledge relationship type/);
+
+  const project = createSpecProject({
+    name: "Duplicate",
+    requirements: [{ id: "REQ-1", title: "A", description: "A requirement" }],
+    traceLinks: [
+      { from: "REQ-1", to: "CODE-1", type: "implements" },
+      { from: "REQ-1", to: "CODE-1", type: "implements" }
+    ]
+  });
+  assert.throws(() => calculateImpact(project, "REQ-1"), /Duplicate knowledge edge/);
+});
+
 test("calculates transitive impact across multiple graph hops", () => {
   const project = createSpecProject({
     name: "Example",

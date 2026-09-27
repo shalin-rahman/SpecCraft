@@ -34,7 +34,8 @@ function languageFor(filePath) {
 
 async function walk(root, current, files) {
   if (files.length >= maxFiles) return;
-  const entries = await readdir(current, { withFileTypes: true });
+  const entries = (await readdir(current, { withFileTypes: true }))
+    .sort((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0);
   for (const entry of entries) {
     if (files.length >= maxFiles || ignoredDirectories.has(entry.name)) continue;
     const absolute = join(current, entry.name);

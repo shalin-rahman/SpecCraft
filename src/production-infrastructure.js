@@ -1,4 +1,4 @@
-import { appendFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import {
   createHash,
   createHmac,
@@ -8,8 +8,20 @@ import {
   verify as verifySignature
 } from "node:crypto";
 import { dirname } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 
 const ISO = () => new Date().toISOString();
+
+async function persistAtomically(filePath, content) {
+  await mkdir(dirname(filePath), { recursive: true });
+  const temporary = `${filePath}.${process.pid}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(temporary, content, { encoding: "utf8", flag: "wx" });
+    await rename(temporary, filePath);
+  } finally {
+    await rm(temporary, { force: true }).catch(() => {});
+  }
+}
 
 function digest(value) {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
@@ -177,6 +189,7 @@ export class EnvironmentSecretManager extends SecretManager {
 export class FileCollaborationStore {
   constructor(filePath) {
     this.filePath = filePath;
+    this.lock = new FileJobQueue(filePath);
   }
 
   async read() {
@@ -189,18 +202,17 @@ export class FileCollaborationStore {
   }
 
   async propose(input) {
-    const current = await this.read();
-    if (input.expectedRevision !== current.revision) throw new Error("Revision conflict");
-    const next = {
-      ...current,
-      revision: current.revision + 1,
-      proposals: [...current.proposals, { id: randomUUID(), ...input, status: "pending-review" }]
-    };
-    await mkdir(dirname(this.filePath), { recursive: true });
-    const temporary = `${this.filePath}.tmp`;
-    await writeFile(temporary, JSON.stringify(next), "utf8");
-    await rename(temporary, this.filePath);
-    return next;
+    return this.lock.withLock(async () => {
+      const current = await this.read();
+      if (input.expectedRevision !== current.revision) throw new Error("Revision conflict");
+      const next = {
+        ...current,
+        revision: current.revision + 1,
+        proposals: [...current.proposals, { id: randomUUID(), ...input, status: "pending-review" }]
+      };
+      await persistAtomically(this.filePath, JSON.stringify(next));
+      return next;
+    });
   }
 }
 
@@ -209,6 +221,12 @@ export class FileJobQueue {
     this.filePath = filePath;
     this.maxAttempts = options.maxAttempts ?? 5;
     this.leaseMs = options.leaseMs ?? 60_000;
+    this.lockStaleMs = options.lockStaleMs ?? 30_000;
+    this.lockTimeoutMs = options.lockTimeoutMs ?? 60_000;
+    if (!Number.isSafeInteger(this.lockStaleMs) || this.lockStaleMs < 1 ||
+        !Number.isSafeInteger(this.lockTimeoutMs) || this.lockTimeoutMs < this.lockStaleMs) {
+      throw new RangeError("Queue lock timeouts must be positive and lockTimeoutMs must cover lockStaleMs");
+    }
   }
 
   async list() {
@@ -222,78 +240,197 @@ export class FileJobQueue {
   }
 
   async persist(records) {
-    await mkdir(dirname(this.filePath), { recursive: true });
-    const temporary = `${this.filePath}.tmp`;
     const content = records.map((record) => JSON.stringify(record)).join("\n") + (records.length ? "\n" : "");
-    await writeFile(temporary, content, "utf8");
-    await rename(temporary, this.filePath);
+    await persistAtomically(this.filePath, content);
+  }
+
+  async withLock(operation) {
+    const lockPath = `${this.filePath}.lock`;
+    const lockToken = randomUUID();
+    const startedAt = Date.now();
+    await mkdir(dirname(this.filePath), { recursive: true });
+
+    while (true) {
+      let handle;
+      try {
+        handle = await open(lockPath, "wx");
+        await handle.writeFile(JSON.stringify({ pid: process.pid, token: lockToken }), "utf8");
+      } catch (error) {
+        await handle?.close().catch(() => {});
+        if (error.code !== "EEXIST") throw error;
+        try {
+          const metadata = await stat(lockPath);
+          if (Date.now() - metadata.mtimeMs > this.lockStaleMs) {
+            const reaped = await this.reapStaleLock(lockPath);
+            if (reaped) continue;
+          }
+        } catch (statError) {
+          if (statError.code !== "ENOENT") throw statError;
+        }
+        if (Date.now() - startedAt >= this.lockTimeoutMs) {
+          throw new Error("Timed out waiting for the queue lock");
+        }
+        await delay(10);
+        continue;
+      }
+
+      try {
+        return await operation();
+      } finally {
+        await handle.close().catch(() => {});
+        try {
+          const lock = JSON.parse(await readFile(lockPath, "utf8"));
+          if (lock.token === lockToken) await rm(lockPath, { force: true });
+        } catch (error) {
+          if (error.code !== "ENOENT") throw error;
+        }
+      }
+    }
+  }
+
+  async reapStaleLock(lockPath) {
+    const reaperPath = `${lockPath}.reaper`;
+    const reaperToken = randomUUID();
+    let reaper;
+    try {
+      reaper = await open(reaperPath, "wx");
+      await reaper.writeFile(reaperToken, "utf8");
+    } catch (error) {
+      await reaper?.close().catch(() => {});
+      if (error.code === "EEXIST") return false;
+      throw error;
+    }
+
+    try {
+      let metadata;
+      let lockContents;
+      let owner = null;
+      try {
+        metadata = await stat(lockPath);
+        lockContents = await readFile(lockPath, "utf8");
+        try {
+          owner = JSON.parse(lockContents);
+        } catch (error) {
+          if (!(error instanceof SyntaxError)) throw error;
+        }
+      } catch (error) {
+        if (error.code === "ENOENT") return true;
+        throw error;
+      }
+      if (!metadata || Date.now() - metadata.mtimeMs <= this.lockStaleMs) return false;
+
+      let ownerAlive = false;
+      if (Number.isInteger(owner?.pid) && owner.pid > 0) {
+        try {
+          process.kill(owner.pid, 0);
+          ownerAlive = true;
+        } catch (error) {
+          ownerAlive = error.code === "EPERM";
+        }
+      }
+      if (ownerAlive) return false;
+
+      let current;
+      try {
+        const currentMetadata = await stat(lockPath);
+        const currentContents = await readFile(lockPath, "utf8");
+        if (currentContents !== lockContents || currentMetadata.dev !== metadata.dev ||
+            currentMetadata.ino !== metadata.ino || currentMetadata.mtimeMs !== metadata.mtimeMs) return false;
+        try {
+          current = JSON.parse(currentContents);
+        } catch (error) {
+          if (!(error instanceof SyntaxError)) throw error;
+        }
+      } catch (error) {
+        if (error.code === "ENOENT") return true;
+        throw error;
+      }
+      if (owner && current?.token !== owner.token) return false;
+      await rm(lockPath, { force: true });
+      return true;
+    } finally {
+      await reaper.close().catch(() => {});
+      try {
+        if ((await readFile(reaperPath, "utf8")) === reaperToken) await rm(reaperPath, { force: true });
+      } catch (error) {
+        if (error.code !== "ENOENT") throw error;
+      }
+    }
   }
 
   async enqueue(type, payload, idempotencyKey = randomUUID()) {
-    const records = await this.list();
-    const existing = records.find((record) => record.idempotencyKey === idempotencyKey);
-    if (existing) {
-      return existing;
-    }
-
-    const record = {
-      id: randomUUID(),
-      type,
-      payload,
-      idempotencyKey,
-      status: "queued",
-      attempts: 0,
-      createdAt: ISO(),
-      updatedAt: ISO()
-    };
-    records.push(record);
-    await this.persist(records);
-    return record;
-  }
-
-  async claimNext(workerId) {
-    const records = await this.list();
-    const now = Date.now();
-    const candidate = records.find((record) => {
-      const expiredLease = record.status === "running" && Number(record.leaseUntil ?? 0) <= now;
-      return record.status === "queued" || record.status === "retrying" || expiredLease;
+    return this.withLock(async () => {
+      const records = await this.list();
+      const existing = records.find((record) => record.idempotencyKey === idempotencyKey);
+      if (existing) return existing;
+      const record = {
+        id: randomUUID(), type, payload, idempotencyKey, status: "queued", attempts: 0,
+        createdAt: ISO(), updatedAt: ISO()
+      };
+      records.push(record);
+      await this.persist(records);
+      return record;
     });
-    if (!candidate) return null;
-
-    candidate.status = "running";
-    candidate.workerId = workerId;
-    candidate.attempts = (candidate.attempts ?? 0) + 1;
-    candidate.leaseUntil = now + this.leaseMs;
-    candidate.updatedAt = ISO();
-    await this.persist(records);
-    return candidate;
   }
 
-  async complete(jobId, output) {
-    const records = await this.list();
-    const record = records.find((item) => item.id === jobId);
-    if (!record) throw new Error(`Unknown job: ${jobId}`);
-    record.status = "completed";
-    record.output = output;
-    record.completedAt = ISO();
-    record.updatedAt = ISO();
-    record.leaseUntil = null;
-    await this.persist(records);
-    return record;
+  async claimNext(workerId, { excludeIds = [] } = {}) {
+    return this.withLock(async () => {
+      const records = await this.list();
+      const now = Date.now();
+      const excluded = new Set(excludeIds);
+      const candidate = records.find((record) => {
+        const expiredLease = record.status === "running" && Number(record.leaseUntil ?? 0) <= now;
+        return !excluded.has(record.id) && (record.status === "queued" || record.status === "retrying" || expiredLease);
+      });
+      if (!candidate) return null;
+      candidate.status = "running";
+      candidate.workerId = workerId;
+      candidate.leaseToken = randomUUID();
+      candidate.attempts = (candidate.attempts ?? 0) + 1;
+      candidate.leaseUntil = now + this.leaseMs;
+      candidate.updatedAt = ISO();
+      await this.persist(records);
+      return candidate;
+    });
   }
 
-  async fail(jobId, errorMessage) {
-    const records = await this.list();
-    const record = records.find((item) => item.id === jobId);
-    if (!record) throw new Error(`Unknown job: ${jobId}`);
-    const shouldRetry = (record.attempts ?? 0) < this.maxAttempts;
-    record.status = shouldRetry ? "retrying" : "failed";
-    record.lastError = String(errorMessage ?? "unknown");
-    record.leaseUntil = null;
-    record.deadLetter = !shouldRetry;
-    record.updatedAt = ISO();
-    await this.persist(records);
-    return record;
+  async complete(jobId, output, leaseToken) {
+    return this.withLock(async () => {
+      const records = await this.list();
+      const record = records.find((item) => item.id === jobId);
+      if (!record) throw new Error(`Unknown job: ${jobId}`);
+      if (record.status !== "running" || !leaseToken || record.leaseToken !== leaseToken) {
+        throw new Error(`Cannot complete job ${jobId}: stale lease`);
+      }
+      record.status = "completed";
+      record.output = output;
+      record.completedAt = ISO();
+      record.updatedAt = ISO();
+      record.leaseUntil = null;
+      record.leaseToken = null;
+      await this.persist(records);
+      return record;
+    });
+  }
+
+  async fail(jobId, errorMessage, leaseToken) {
+    return this.withLock(async () => {
+      const records = await this.list();
+      const record = records.find((item) => item.id === jobId);
+      if (!record) throw new Error(`Unknown job: ${jobId}`);
+      if (record.status !== "running" || !leaseToken || record.leaseToken !== leaseToken) {
+        throw new Error(`Cannot fail job ${jobId}: stale lease`);
+      }
+      const shouldRetry = (record.attempts ?? 0) < this.maxAttempts;
+      record.status = shouldRetry ? "retrying" : "failed";
+      record.lastError = String(errorMessage ?? "unknown");
+      record.leaseUntil = null;
+      record.leaseToken = null;
+      record.deadLetter = !shouldRetry;
+      record.updatedAt = ISO();
+      await this.persist(records);
+      return record;
+    });
   }
 }
 
@@ -310,6 +447,7 @@ export class Outbox {
 export class ProjectRepository {
   constructor(filePath) {
     this.filePath = filePath;
+    this.lock = new FileJobQueue(filePath);
   }
 
   async read() {
@@ -328,34 +466,33 @@ export class ProjectRepository {
   }
 
   async write(state) {
-    await mkdir(dirname(this.filePath), { recursive: true });
-    const temporary = `${this.filePath}.tmp`;
-    await writeFile(temporary, JSON.stringify(state, null, 2), "utf8");
-    await rename(temporary, this.filePath);
+    await persistAtomically(this.filePath, JSON.stringify(state, null, 2));
   }
 
   async createProject({ id, name, owner, metadata = {} }) {
-    const state = await this.read();
-    if (!id || state.projects[id]) {
-      throw new Error("Project id must be unique and present");
-    }
+    return this.lock.withLock(async () => {
+      const state = await this.read();
+      if (!id || state.projects[id]) {
+        throw new Error("Project id must be unique and present");
+      }
 
-    const project = {
-      id,
-      name: name ?? id,
-      owner: owner ?? "unknown",
-      metadata,
-      createdAt: ISO(),
-      updatedAt: ISO(),
-      currentRevision: 0,
-      revisions: [],
-      proposals: [],
-      audit: []
-    };
+      const project = {
+        id,
+        name: name ?? id,
+        owner: owner ?? "unknown",
+        metadata,
+        createdAt: ISO(),
+        updatedAt: ISO(),
+        currentRevision: 0,
+        revisions: [],
+        proposals: [],
+        audit: []
+      };
 
-    state.projects[id] = project;
-    await this.write(state);
-    return project;
+      state.projects[id] = project;
+      await this.write(state);
+      return project;
+    });
   }
 
   async getProject(projectId) {
@@ -369,56 +506,62 @@ export class ProjectRepository {
   }
 
   async saveRevision(projectId, entry) {
-    const state = await this.read();
-    const project = state.projects[projectId];
-    if (!project) throw new Error(`Project not found: ${projectId}`);
-    const revision = {
-      id: randomUUID(),
-      revisionId: project.currentRevision + 1,
-      createdAt: ISO(),
-      ...entry
-    };
-    project.currentRevision = revision.revisionId;
-    project.revisions.push(revision);
-    project.updatedAt = ISO();
-    state.revisions.push({ projectId, ...revision });
-    await this.write(state);
-    return revision;
+    return this.lock.withLock(async () => {
+      const state = await this.read();
+      const project = state.projects[projectId];
+      if (!project) throw new Error(`Project not found: ${projectId}`);
+      const revision = {
+        id: randomUUID(),
+        revisionId: project.currentRevision + 1,
+        createdAt: ISO(),
+        ...entry
+      };
+      project.currentRevision = revision.revisionId;
+      project.revisions.push(revision);
+      project.updatedAt = ISO();
+      state.revisions.push({ projectId, ...revision });
+      await this.write(state);
+      return revision;
+    });
   }
 
   async proposeChange(projectId, input) {
-    const state = await this.read();
-    const project = state.projects[projectId];
-    if (!project) throw new Error(`Project not found: ${projectId}`);
-    if (input.expectedRevision !== project.currentRevision) throw new Error("Revision conflict");
-    const proposal = {
-      id: randomUUID(),
-      expectedRevision: input.expectedRevision,
-      actor: input.actor ?? "system",
-      summary: input.summary ?? "proposal",
-      payload: input.payload ?? {},
-      status: "pending-review",
-      createdAt: ISO()
-    };
-    project.proposals.push(proposal);
-    project.updatedAt = ISO();
-    await this.write(state);
-    return proposal;
+    return this.lock.withLock(async () => {
+      const state = await this.read();
+      const project = state.projects[projectId];
+      if (!project) throw new Error(`Project not found: ${projectId}`);
+      if (input.expectedRevision !== project.currentRevision) throw new Error("Revision conflict");
+      const proposal = {
+        id: randomUUID(),
+        expectedRevision: input.expectedRevision,
+        actor: input.actor ?? "system",
+        summary: input.summary ?? "proposal",
+        payload: input.payload ?? {},
+        status: "pending-review",
+        createdAt: ISO()
+      };
+      project.proposals.push(proposal);
+      project.updatedAt = ISO();
+      await this.write(state);
+      return proposal;
+    });
   }
 
   async appendAudit(projectId, entry) {
-    const state = await this.read();
-    const project = state.projects[projectId];
-    if (!project) throw new Error(`Project not found: ${projectId}`);
-    const record = {
-      id: randomUUID(),
-      createdAt: ISO(),
-      ...entry
-    };
-    project.audit.push(record);
-    project.updatedAt = ISO();
-    await this.write(state);
-    return record;
+    return this.lock.withLock(async () => {
+      const state = await this.read();
+      const project = state.projects[projectId];
+      if (!project) throw new Error(`Project not found: ${projectId}`);
+      const record = {
+        id: randomUUID(),
+        createdAt: ISO(),
+        ...entry
+      };
+      project.audit.push(record);
+      project.updatedAt = ISO();
+      await this.write(state);
+      return record;
+    });
   }
 }
 
@@ -602,14 +745,16 @@ export class ManagedIdentityProvider extends ManagedIdentityService {
     this.maxJwksBytes = maxJwksBytes;
     this.maxJwksKeys = maxJwksKeys;
     this.jwksCache = null;
+    this.validateConfiguration();
   }
 
   validateConfiguration() {
-    if (!this.issuer || !this.audience) {
+    if (typeof this.issuer !== "string" || !this.issuer.trim() ||
+        typeof this.audience !== "string" || !this.audience.trim()) {
       throw new Error("Managed identity provider requires issuer and audience");
     }
-    if (!this.jwksUrl && !this.signingSecret) {
-      throw new Error("Managed identity provider requires JWKS or a shared signing secret");
+    if (Boolean(this.jwksUrl) === Boolean(this.signingSecret)) {
+      throw new Error("Managed identity provider requires exactly one of JWKS or a shared signing secret");
     }
     return {
       issuer: this.issuer,
@@ -897,16 +1042,21 @@ export class ManagedOutbox {
 
   async drain(handler) {
     const queued = await this.queue.list();
-    for (const job of queued) {
-      if (job.status !== "queued" && job.status !== "retrying") continue;
+    const runnableCount = queued.filter((job) => job.status === "queued" || job.status === "retrying").length;
+    const workerId = `outbox-${randomUUID()}`;
+    const processedIds = new Set();
+    for (let index = 0; index < runnableCount; index += 1) {
+      const job = await this.queue.claimNext(workerId, { excludeIds: [...processedIds] });
+      if (!job) break;
+      processedIds.add(job.id);
       try {
         const result = await handler(job);
-        await this.queue.complete(job.id, result);
+        await this.queue.complete(job.id, result, job.leaseToken);
       } catch (error) {
-        await this.queue.fail(job.id, error instanceof Error ? error.message : String(error));
+        await this.queue.fail(job.id, error instanceof Error ? error.message : String(error), job.leaseToken);
       }
     }
-    return queued;
+    return this.queue.list();
   }
 }
 

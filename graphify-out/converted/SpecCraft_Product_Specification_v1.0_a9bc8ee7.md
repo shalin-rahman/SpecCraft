@@ -1,19 +1,20 @@
-﻿<!-- converted from SpecCraft_Product_Specification_v1.0.docx -->
+<!-- converted from SpecCraft_Product_Specification_v1.0.docx -->
 
-SpecCraft â€” Agent-Independent Specification & Engineering Knowledge Platform
-Version 1.0 â€¢ 25 September 2026
+SpecCraft — Agent-Independent Specification & Engineering Knowledge Platform
+Version 1.0 • 25 September 2026
 Reference architecture and implementation specification
+Status note — 26 September 2026. This document describes the proposed SpecCraft architecture and product requirements. It is not a report of features currently implemented. For verified local behavior and open gaps, see docs/platform-specification.md and docs/semantic-graph-implementation-plan.md.
 
 # 1. Executive Summary
 SpecCraft is a generic, agent-independent specification and engineering-knowledge layer for AI-assisted software development. It does not attempt to replace coding agents such as Codex, Claude Code, Copilot, Cursor, Kiro, Gemini-based agents, or Spec Kit. Instead, it provides persistent, versioned, structured, evidence-backed project knowledge that those agents can query and update.
 The central design principle is: the agent is the reasoning and implementation engine; SpecCraft is the durable specification, traceability, validation, synchronization, and context layer.
-- Greenfield: human intent â†’ clarified requirements â†’ canonical specification â†’ agent implementation â†’ verification.
-- Brownfield: existing code/tests/configuration â†’ reverse engineering â†’ reconstructed specification â†’ human review â†’ maintained specification.
-- Convergence: specification + implementation â†’ drift analysis â†’ gaps/undocumented behavior â†’ remediation tasks.
+- Greenfield: human intent → clarified requirements → canonical specification → agent implementation → verification.
+- Brownfield: existing code/tests/configuration → reverse engineering → reconstructed specification → human review → maintained specification.
+- Convergence: specification + implementation → drift analysis → gaps/undocumented behavior → remediation tasks.
 - Agent portability: the same project specification is accessible from different agents, models, editors, CLI sessions, and CI.
 - Token efficiency: agents receive task-relevant context through a context compiler instead of the entire project specification.
 # 2. Product Positioning and Scope
-Product statement: â€œA persistent specification and engineering knowledge layer that gives every AI coding agent the same authoritative, versioned, evidence-backed understanding of a software project.â€
+Product statement: “A persistent specification and engineering knowledge layer that gives every AI coding agent the same authoritative, versioned, evidence-backed understanding of a software project.”
 ## 2.1 In scope
 - Natural-language requirement capture and normalization.
 - Clarification and ambiguity/contradiction discovery through agents.
@@ -80,7 +81,7 @@ Human / Product Owner / Developer
 The canonical model is the product's most important contract. It must be independent of Spec Kit, any LLM, and any editor.
 ## 5.1 Core objects
 
-## 5.2 Requirement schema â€” conceptual
+## 5.2 Requirement schema — conceptual
 Requirement {
   id: stable-id
   title
@@ -188,22 +189,22 @@ This feature closes the loop between specification and current implementation.
 - spec.verify.run
 Mutation tools must support dry-run, validation, authorization, idempotency keys, provenance, and human-approval status where required.
 # 13. CLI
-SpecCraft init
-SpecCraft capture
-SpecCraft clarify
-SpecCraft review
-SpecCraft validate
-SpecCraft reverse
-SpecCraft sync
-SpecCraft impact
-SpecCraft context
-SpecCraft verify
-SpecCraft export --target speckit
-SpecCraft import --source speckit
-SpecCraft doctor
-SpecCraft status
+speccraft init
+speccraft capture
+speccraft clarify
+speccraft review
+speccraft validate
+speccraft reverse
+speccraft sync
+speccraft impact
+speccraft context
+speccraft verify
+speccraft export --target speckit
+speccraft import --source speckit
+speccraft doctor
+speccraft status
 # 14. Spec Kit Integration
-SpecCraft should use Spec Kit as an adapter/execution workflow rather than fork its core. Current Spec Kit is explicitly an extensible process harness with Specify â†’ Plan â†’ Tasks â†’ Implement â†’ Converge, many agent integrations, workflows, extensions and presets. Spec Kit's existing-project guide also makes clear that initializing an existing repository does not infer its specifications automatically. This creates a useful complementary boundary for SpecCraft's reverse-engineering capability.
+SpecCraft should use Spec Kit as an adapter/execution workflow rather than fork its core. Current Spec Kit is explicitly an extensible process harness with Specify → Plan → Tasks → Implement → Converge, many agent integrations, workflows, extensions and presets. Spec Kit's existing-project guide also makes clear that initializing an existing repository does not infer its specifications automatically. This creates a useful complementary boundary for SpecCraft's reverse-engineering capability.
 - Generate Spec Kit-compatible artifacts from canonical requirements.
 - Import Spec Kit artifacts into canonical objects with provenance.
 - Track Spec Kit version and adapter version.
@@ -286,7 +287,7 @@ SpecCraft should use Spec Kit as an adapter/execution workflow rather than fork 
 - Allow agents to request more context explicitly.
 - Never hide conflicts: unresolved findings relevant to the task must be surfaced.
 # 24. Agent Portability Contract
-SpecCraft PROJECT CONTRACT
+SPECFORGE PROJECT CONTRACT
 
 - .spec/ is the canonical project knowledge layer.
 - Agent-specific instruction files are generated projections.
@@ -351,7 +352,7 @@ Technology choices are implementation recommendations, not requirements of the d
 - Spec Kit workflows reference: https://github.com/github/spec-kit/blob/main/docs/reference/workflows.md
 - Spec Kit integrations reference: https://github.com/github/spec-kit/blob/main/docs/reference/integrations.md
 - Spec Kit customization guide: https://github.com/github/spec-kit/blob/main/docs/guides/customization.md
-End of Product Specification â€” v1.0
+End of Product Specification — v1.0
 | Principle | Requirement |
 | --- | --- |
 | Specification as source of intent | Approved requirements and decisions are authoritative for intended behavior. |
@@ -465,7 +466,7 @@ End of Product Specification â€” v1.0
 | Unit | Rule validators, parsers, graph algorithms, diff engine, state machine validator. |
 | Contract | MCP schemas, OpenAPI, file schema, Spec Kit adapter contract. |
 | Integration | Git, DB, code analyzers, LLM provider adapters, graph providers. |
-| End-to-end | Natural language â†’ spec â†’ review â†’ implementation review. |
+| End-to-end | Natural language → spec → review → implementation review. |
 | Regression | Known ambiguity/contradiction/reverse-engineering fixtures. |
 | Security | Prompt injection, path traversal, secret leakage, unsafe tool invocation. |
 | Performance | Large repo indexing, incremental analysis, context retrieval. |
@@ -476,7 +477,7 @@ End of Product Specification â€” v1.0
 | P1 Agent Bridge | MCP server, context compiler, project contract, provider-neutral agent integration. |
 | P2 Specification Intelligence | Capture, clarification orchestration, review, ambiguity/contradiction/completeness analysis. |
 | P3 Reverse Engineering | Repository inventory, AST adapters, API/DB/test analyzers, evidence model. |
-| P4 Synchronization | Specâ†”code comparison, drift findings, impact analysis, remediation changesets. |
+| P4 Synchronization | Spec↔code comparison, drift findings, impact analysis, remediation changesets. |
 | P5 Ecosystem | Spec Kit adapter, Graphify/code-graph adapter, GitHub/GitLab/issue tracker adapters. |
 | P6 Collaboration | Optional cloud service, team review, permissions, audit, organization knowledge. |
 | P7 Governance | Policy packs, compliance controls, domain packs, enterprise catalogs. |

@@ -1,11 +1,25 @@
+import { dirname, extname, join, normalize } from "node:path";
 import { createDefaultParserRegistry } from "./parser-adapter.js";
 
 function isTestFile(path) {
   return /(^|[\\/])tests?([\\/]|$)|(?:\.test|\.spec)\.[^.]+$|(?:^|_)test\.py$/i.test(path);
 }
 
-function moduleNodeId(source) {
-  return `module:${source}`;
+function moduleNodeId(source, importerPath) {
+  return source.startsWith(".") ? `module:${importerPath}:${source}` : `module:${source}`;
+}
+
+const sourceExtensions = [".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx"];
+
+function resolveScannedImport(importerPath, source, filesByPath) {
+  if (!source.startsWith(".")) return null;
+  const base = normalize(join(dirname(importerPath), source)).replaceAll("\\", "/");
+  const candidates = [base];
+  if (!extname(base)) {
+    for (const extension of sourceExtensions) candidates.push(`${base}${extension}`);
+    for (const extension of sourceExtensions) candidates.push(`${base}/index${extension}`);
+  }
+  return candidates.find((candidate) => filesByPath.has(candidate)) ?? null;
 }
 
 export function extractSymbols(file, parserRegistry = createDefaultParserRegistry()) {
@@ -24,6 +38,17 @@ export function buildCodeGraph(scan, { parserRegistry = createDefaultParserRegis
   const edges = [];
   const diagnostics = [];
   const parsedFiles = new Map();
+  const filesByPath = new Map(scan.files.map((file) => [file.path.replaceAll("\\", "/"), file]));
+  const importEdges = new Map();
+  const addImportEdge = (from, to, evidence) => {
+    const key = `${from}\u0000${to}`;
+    const existing = importEdges.get(key);
+    if (existing) {
+      if (!existing.evidence.includes(evidence)) existing.evidence.push(evidence);
+      return;
+    }
+    importEdges.set(key, { from, to, type: "imports", evidence: [evidence], confidence: "medium" });
+  };
 
   for (const file of scan.files) {
     const parsed = parserRegistry.parse(file);
@@ -44,22 +69,34 @@ export function buildCodeGraph(scan, { parserRegistry = createDefaultParserRegis
       });
     }
     for (const imported of parsed.imports) {
-      const id = moduleNodeId(imported.source);
-      if (!nodes.has(id)) {
+      const importerPath = file.path.replaceAll("\\", "/");
+      const id = moduleNodeId(imported.source, importerPath);
+      const resolvedFile = resolveScannedImport(importerPath, imported.source, filesByPath);
+      const existingModule = nodes.get(id);
+      if (!existingModule) {
         nodes.set(id, {
           id,
           type: "module",
           source: imported.source,
-          external: true
+          external: resolvedFile === null,
+          ...(resolvedFile ? { resolvedFile } : {})
+        });
+      } else if (resolvedFile && !existingModule.resolvedFile && existingModule.external) {
+        existingModule.external = false;
+        existingModule.resolvedFile = resolvedFile;
+      } else if (resolvedFile && existingModule.resolvedFile && existingModule.resolvedFile !== resolvedFile) {
+        existingModule.external = true;
+        delete existingModule.resolvedFile;
+        diagnostics.push({
+          severity: "warning",
+          code: "AMBIGUOUS_RELATIVE_IMPORT",
+          message: `Relative import ${imported.source} resolves to different scanned files; module target is left unresolved.`,
+          file: file.path
         });
       }
-      edges.push({
-        from: file.path,
-        to: id,
-        type: "imports",
-        evidence: [`${file.path}:${imported.line}`],
-        confidence: "medium"
-      });
+      const evidence = `${file.path}:${imported.line}`;
+      addImportEdge(file.path, id, evidence);
+      if (resolvedFile) addImportEdge(file.path, resolvedFile, evidence);
     }
     for (const route of parsed.routes) {
       const api = { ...route, type: "api" };
@@ -87,7 +124,7 @@ export function buildCodeGraph(scan, { parserRegistry = createDefaultParserRegis
       for (const imported of parsed.imports) {
         edges.push({
           from: file.path,
-          to: moduleNodeId(imported.source),
+          to: moduleNodeId(imported.source, file.path.replaceAll("\\", "/")),
           type: "tests",
           evidence: [`${file.path}:${imported.line}`],
           confidence: "low"
@@ -114,6 +151,8 @@ export function buildCodeGraph(scan, { parserRegistry = createDefaultParserRegis
       });
     }
   }
+
+  edges.push(...importEdges.values());
 
   return {
     revision: scan.revision,

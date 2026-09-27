@@ -1,4 +1,4 @@
-import { traverseKnowledgeGraph } from "./knowledge-graph.js";
+import { createKnowledgeGraph, traverseKnowledgeGraph } from "./knowledge-graph.js";
 
 const validStatuses = new Set(["draft", "proposed", "approved", "deprecated"]);
 const validPriorities = new Set(["low", "medium", "high", "critical"]);
@@ -46,11 +46,14 @@ export function createTraceLink(input) {
   }
 
   return {
+    ...structuredClone(input),
     from: requireText(input.from, "from"),
     to: requireText(input.to, "to"),
     type: requireText(input.type, "type"),
     evidence: Array.isArray(input.evidence) ? [...input.evidence] : [],
-    confidence: input.confidence ?? "medium"
+    confidence: input.confidence ?? "medium",
+    ...(input.freshness !== undefined ? { freshness: input.freshness } : {}),
+    ...(input.reviewState !== undefined ? { reviewState: input.reviewState } : {})
   };
 }
 
@@ -202,11 +205,11 @@ function buildProjectTraceGraph(project) {
     addNode({ id: link.to, type: inferType(link.to), evidence: [] });
   }
 
-  return {
+  return createKnowledgeGraph({
     revision: String(project.version ?? "0.1.0"),
     nodes: [...nodes.values()],
     edges: project.traceLinks ?? []
-  };
+  });
 }
 
 export function createSpecProject(input = {}) {
@@ -221,6 +224,9 @@ export function createSpecProject(input = {}) {
     requirements,
     rules: Array.isArray(input.rules) ? [...input.rules] : [],
     workflows: Array.isArray(input.workflows) ? [...input.workflows] : [],
+    apiContracts: Array.isArray(input.apiContracts) ? [...input.apiContracts] : [],
+    permissions: Array.isArray(input.permissions) ? [...input.permissions] : [],
+    decisions: Array.isArray(input.decisions) ? [...input.decisions] : [],
     traceLinks: Array.isArray(input.traceLinks)
       ? input.traceLinks.map(createTraceLink)
       : []

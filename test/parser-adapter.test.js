@@ -51,3 +51,20 @@ test("labels lexical Python extraction and unsupported languages explicitly", ()
   assert.equal(unsupported.diagnostics[0].code, "UNSUPPORTED_LANGUAGE");
   assert.equal(unsupported.symbols.length, 0);
 });
+
+test("gives repeated Python declarations stable, line-qualified identities", () => {
+  const registry = createDefaultParserRegistry();
+  const file = {
+    path: "service.py",
+    language: "python",
+    content: "def run():\n    pass\n\nclass Worker:\n    def run(self):\n        pass\n\ndef run():\n    pass\n"
+  };
+  const first = registry.parse(file);
+  const second = registry.parse(file);
+  assert.deepEqual(first.symbols.map((symbol) => symbol.id), [
+    "service.py#run@1", "service.py#Worker@4", "service.py#run@5", "service.py#run@8"
+  ]);
+  assert.equal(new Set(first.symbols.map((symbol) => symbol.id)).size, first.symbols.length);
+  assert.deepEqual(second.symbols.map((symbol) => symbol.id), first.symbols.map((symbol) => symbol.id));
+  assert.deepEqual(first.symbols.map((symbol) => symbol.line), [1, 4, 5, 8]);
+});

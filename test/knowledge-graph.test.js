@@ -114,3 +114,35 @@ test("requires evidence and human approval before canonicalization", () => {
     reason: "Invalid backward transition"
   }), /Invalid review transition/);
 });
+
+test("keeps breadth-first ordering, cycle handling, and traversal bounds", () => {
+  const graph = createKnowledgeGraph({
+    nodes: [
+      { id: "A", type: "requirement" }, { id: "B", type: "rule" },
+      { id: "C", type: "rule" }, { id: "D", type: "test" }
+    ],
+    edges: [
+      { from: "A", to: "C", type: "requires" },
+      { from: "A", to: "B", type: "requires" },
+      { from: "B", to: "A", type: "depends-on" },
+      { from: "B", to: "D", type: "verified-by" },
+      { from: "C", to: "D", type: "verified-by" }
+    ]
+  });
+  assert.deepEqual(traverseKnowledgeGraph(graph, "A").map((item) => item.id), ["B", "C", "D"]);
+  assert.deepEqual(traverseKnowledgeGraph(graph, "A", { direction: "outgoing", maxDepth: 1 }).map((item) => item.id), ["B", "C"]);
+  assert.deepEqual(traverseKnowledgeGraph(graph, "D", { direction: "incoming", maxDepth: 1 }).map((item) => item.id), ["B", "C"]);
+  assert.throws(() => traverseKnowledgeGraph(graph, "A", { maxNodes: 1 }), /exceeded maxNodes/);
+});
+
+test("preserves graph edge order when reciprocal links tie on neighbor and type", () => {
+  const graph = createKnowledgeGraph({
+    nodes: [{ id: "A", type: "rule" }, { id: "B", type: "rule" }],
+    edges: [
+      { from: "B", to: "A", type: "depends-on" },
+      { from: "A", to: "B", type: "depends-on" }
+    ]
+  });
+  const result = traverseKnowledgeGraph(graph, "B");
+  assert.equal(result[0].relationships[0].traversal, "reverse");
+});

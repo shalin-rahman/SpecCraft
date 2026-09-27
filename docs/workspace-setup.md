@@ -39,7 +39,7 @@ $body = @{ root = (Get-Location).Path } | ConvertTo-Json
 Invoke-RestMethod http://127.0.0.1:8787/api/scan -Method Post -ContentType "application/json" -Body $body
 ```
 
-The API supports repository scan, candidate reconstruction, file-hash drift, substring-based repository context, provider health/completion, and pending in-memory proposals. Protected routes accept loopback requests when `PLATFORM_TOKEN` is unset; non-loopback requests need a configured bearer token. Request bodies are limited to 1,000,000 bytes, the default per-peer request limit is 60 per minute, limiter storage is capped at 10,000 buckets, and pending proposals are capped at 1,000 per process. `PROVIDER_CONFIG` supplies provider configuration as JSON text. Keep credentials outside source control; see [the user guide](user-guide.md) and [provider specification](provider-specification.md).
+The API supports repository scan, candidate reconstruction, file-hash drift, substring-based repository context, provider health/completion, and pending in-memory proposals. It canonicalizes configured and requested repository roots before checking containment, so an in-root symlink or junction cannot redirect a scan outside the configured tree. Protected routes accept loopback requests when `PLATFORM_TOKEN` is unset; non-loopback requests need a configured bearer token. Request bodies are limited to 1,000,000 bytes, the default per-peer request limit is 60 per minute, limiter storage is capped at 10,000 buckets, and pending proposals are capped at 1,000 per process. `PROVIDER_CONFIG` supplies provider configuration as JSON text. Keep credentials outside source control; see [the user guide](user-guide.md) and [provider specification](provider-specification.md).
 
 ## Verified current state
 
@@ -49,13 +49,19 @@ The current local reference implementation provides:
 - repository scanning with root scoping, ignored secret/dependency paths, file-size/file-count limits, and content hashes;
 - Babel-based JavaScript/TypeScript syntax extraction and conservative lexical Python extraction;
 - a code graph with file/symbol nodes and observed import, route, test, and limited same-file call edges;
+- deterministic selection of the first 2,000 sorted supported source paths, scan-backed relative JavaScript/TypeScript import resolution, and line-qualified Python symbol IDs;
+- project trace normalization through the typed graph contract, retaining API-contract, permission, and decision collections;
+- bounded breadth-first graph traversal with per-invocation adjacency indexes;
 - low-confidence, candidate-only reconstruction per extracted symbol;
 - added/removed/changed file hash drift, not semantic specification drift;
 - basic graph traversal/coverage and requirement impact helpers, without a unified canonical graph;
 - local file-backed and in-memory reference adapters alongside production contracts.
 - HS256/RS256 identity verification against an explicit secret or configured HTTPS JWKS URL. The HTTP API does not use this adapter for its own authentication.
+- managed identity provider setup that rejects missing issuer/audience and missing or conflicting key sources.
+- local file-backed stores with serialized mutations, exclusive unique temporary files, atomic replacement, and stale queue-lock recovery; this is not distributed coordination infrastructure.
+- a local file-backed queue with claim-token fencing and test-owned temporary directories; this is not distributed queue infrastructure.
 
-The complete suite passed 28 tests on 2026-09-26 after adding identity, request-limit, proposal-capacity, rate-limit, and secret-redaction regressions. The earlier repair pass had 25 passing tests; the initial working-tree run had three failures. Details and the remaining architectural gaps are tracked in [the implementation plan](semantic-graph-implementation-plan.md). Re-run `npm test` for the current checkout; this recorded result is evidence from that date, not a guarantee for future changes.
+The complete suite passed 42 tests on 2026-09-27 after the graph, scan-boundary, identity-configuration, and queue regressions were added. Earlier checkpoints had 28 tests after the runtime-security slice and 25 after the parser/API repair pass. Details and remaining architectural gaps are tracked in [the implementation plan](semantic-graph-implementation-plan.md). Re-run `npm test` for the current checkout; this recorded result is evidence from that date, not a guarantee for future changes.
 
 ## Project knowledge and change workflow
 

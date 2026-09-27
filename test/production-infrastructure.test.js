@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHmac, generateKeyPairSync, sign } from "node:crypto";
@@ -9,6 +9,8 @@ import {
   EnvironmentSecretManager,
   FileCollaborationStore,
   FileJobQueue,
+  ProjectRepository,
+  ManagedOutbox,
   ManagedAuthorizationService,
   ManagedDatabaseAdapter,
   ManagedIdentityService,
@@ -80,6 +82,52 @@ test("queue, parser registry, and labelled evaluation expose explicit results", 
   assert.deepEqual(evaluateLabels(["a", "b"], ["b", "c"]), {
     truePositive: 1, falsePositive: 1, falseNegative: 1, precision: 0.5, recall: 0.5
   });
+});
+
+test("managed identity provider rejects incomplete or ambiguous configuration", () => {
+  assert.throws(() => new ManagedIdentityProvider({ signingSecret: "secret" }), /issuer and audience/i);
+  assert.throws(() => new ManagedIdentityProvider({ issuer: "https://issuer.example.com", signingSecret: "secret" }), /issuer and audience/i);
+  assert.throws(() => new ManagedIdentityProvider({ issuer: "https://issuer.example.com", audience: "app" }), /exactly one/i);
+  assert.throws(() => new ManagedIdentityProvider({
+    issuer: "https://issuer.example.com", audience: "app", signingSecret: "secret",
+    jwksUrl: "https://issuer.example.com/jwks"
+  }), /exactly one/i);
+  assert.doesNotThrow(() => new ManagedIdentityProvider({
+    issuer: "https://issuer.example.com", audience: "app", signingSecret: "secret"
+  }));
+});
+
+test("file stores recover malformed stale queue locks and protect predictable temp paths", async () => {
+  const root = await mkdtemp(join(tmpdir(), "speccraft-"));
+  try {
+    const queuePath = join(root, "jobs.jsonl");
+    const lockPath = `${queuePath}.lock`;
+    await writeFile(lockPath, "{truncated", "utf8");
+    const old = new Date(Date.now() - 2_000);
+    await utimes(lockPath, old, old);
+    const queue = new FileJobQueue(queuePath, { lockStaleMs: 20, lockTimeoutMs: 500 });
+    await queue.enqueue("scan", { root: "repo" }, "after-crash");
+    assert.equal((await queue.list()).length, 1);
+    await assert.rejects(() => readFile(lockPath), { code: "ENOENT" });
+
+    const collaborationPath = join(root, "collaboration.json");
+    const predictableTempPath = `${collaborationPath}.tmp`;
+    await writeFile(predictableTempPath, "keep this file", "utf8");
+    const stores = [new FileCollaborationStore(collaborationPath), new FileCollaborationStore(collaborationPath)];
+    const outcomes = await Promise.allSettled(stores.map((store, index) =>
+      store.propose({ expectedRevision: 0, actor: "test", proposal: `proposal-${index}` })));
+    assert.equal(outcomes.filter((result) => result.status === "fulfilled").length, 1);
+    assert.equal(outcomes.filter((result) => result.status === "rejected" && /Revision conflict/.test(result.reason.message)).length, 1);
+    assert.equal(await readFile(predictableTempPath, "utf8"), "keep this file");
+    assert.equal((await new FileCollaborationStore(collaborationPath).read()).proposals.length, 1);
+
+    const projectPath = join(root, "projects.json");
+    const repositories = [new ProjectRepository(projectPath), new ProjectRepository(projectPath)];
+    await Promise.all(repositories.map((repository, index) => repository.createProject({ id: `project-${index}` })));
+    assert.deepEqual((await repositories[0].listProjects()).map(({ id }) => id).sort(), ["project-0", "project-1"]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test("managed stack adapters implement production contracts and protective controls", async () => {
@@ -200,16 +248,21 @@ test("managed stack adapters implement production contracts and protective contr
   assert.equal(limiter.allow("user-1").allowed, true);
   assert.equal(limiter.allow("user-1").allowed, false);
 
-  const queue = new FileJobQueue(join(tmpdir(), `phase2-${Date.now()}.jsonl`), { maxAttempts: 2, leaseMs: 50 });
-  const job = await queue.enqueue("scan", { root: "repo" }, "phase2-job");
-  const claimed = await queue.claimNext("worker-1");
-  assert.equal(claimed.id, job.id);
-  assert.equal((await queue.fail(job.id, "temporary failure")).status, "retrying");
-  const retried = await queue.claimNext("worker-2");
-  assert.equal(retried.status, "running");
-  const finalFailure = await queue.fail(job.id, "persistent failure");
-  assert.equal(finalFailure.deadLetter, true);
-  assert.equal(finalFailure.status, "failed");
+  const queueRoot = await mkdtemp(join(tmpdir(), "speccraft-queue-test-"));
+  try {
+    const queue = new FileJobQueue(join(queueRoot, "queue.jsonl"), { maxAttempts: 2, leaseMs: 50 });
+    const job = await queue.enqueue("scan", { root: "repo" }, "phase2-job");
+    const claimed = await queue.claimNext("worker-1");
+    assert.equal(claimed.id, job.id);
+    assert.equal((await queue.fail(job.id, "temporary failure", claimed.leaseToken)).status, "retrying");
+    const retried = await queue.claimNext("worker-2");
+    assert.equal(retried.status, "running");
+    const finalFailure = await queue.fail(job.id, "persistent failure", retried.leaseToken);
+    assert.equal(finalFailure.deadLetter, true);
+    assert.equal(finalFailure.status, "failed");
+  } finally {
+    await rm(queueRoot, { recursive: true, force: true });
+  }
 
   const security = new SecurityReviewRunner();
   const credential = "ghp_abcdefghijklmnopqrstuvwxyz123456";
@@ -219,4 +272,91 @@ test("managed stack adapters implement production contracts and protective contr
   assert.equal(result.findings.some((finding) => finding.id === "secret-literal" && finding.summary.includes("credential")), true);
   const customRule = new SecurityReviewRunner([{ id: "custom-secret", severity: "high", pattern: /secret-value-123/, summary: "Custom rule matched." }]);
   assert.equal(JSON.stringify(customRule.scanText("secret-value-123")).includes("secret-value-123"), false);
+});
+
+test("file queue serializes claims and rejects stale lease updates", async () => {
+  const root = await mkdtemp(join(tmpdir(), "speccraft-queue-concurrency-"));
+  try {
+    const path = join(root, "queue.jsonl");
+    const firstQueue = new FileJobQueue(path, { leaseMs: 1_000 });
+    const secondQueue = new FileJobQueue(path, { leaseMs: 1_000 });
+    await firstQueue.enqueue("scan", { root: "one" }, "one");
+    await firstQueue.enqueue("scan", { root: "two" }, "two");
+    const claims = await Promise.all([
+      firstQueue.claimNext("worker-a"),
+      secondQueue.claimNext("worker-b")
+    ]);
+    assert.notEqual(claims[0].id, claims[1].id);
+    assert.notEqual(claims[0].leaseToken, claims[1].leaseToken);
+
+    const leasePath = join(root, "lease-queue.jsonl");
+    const leaseQueue = new FileJobQueue(leasePath, { leaseMs: 10 });
+    const queued = await leaseQueue.enqueue("scan", {}, "lease-case");
+    const oldLease = await leaseQueue.claimNext("old-worker");
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    const currentLease = await leaseQueue.claimNext("new-worker");
+    assert.equal(currentLease.id, queued.id);
+    await assert.rejects(leaseQueue.complete(queued.id, { ok: true }, oldLease.leaseToken), /stale lease/i);
+    await assert.rejects(leaseQueue.fail(queued.id, "late failure", oldLease.leaseToken), /stale lease/i);
+    assert.equal((await leaseQueue.complete(queued.id, { ok: true }, currentLease.leaseToken)).status, "completed");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("file queue recovers a stale lock only when its recorded owner is gone", async () => {
+  const root = await mkdtemp(join(tmpdir(), "speccraft-queue-stale-lock-"));
+  try {
+    const path = join(root, "queue.jsonl");
+    const staleLock = `${path}.lock`;
+    const staleQueue = new FileJobQueue(path, { lockStaleMs: 20, lockTimeoutMs: 100 });
+    await writeFile(staleLock, JSON.stringify({ pid: 2_147_483_647, token: "abandoned" }));
+    const old = new Date(Date.now() - 1_000);
+    await utimes(staleLock, old, old);
+    await staleQueue.enqueue("scan", {}, "recover-stale-lock");
+    assert.equal((await staleQueue.list()).length, 1);
+
+    const liveLock = `${path}.lock`;
+    await writeFile(liveLock, JSON.stringify({ pid: process.pid, token: "live" }));
+    const liveOld = new Date(Date.now() - 1_000);
+    await utimes(liveLock, liveOld, liveOld);
+    await assert.rejects(staleQueue.enqueue("scan", {}, "must-not-break-live-lock"), /Timed out waiting/);
+    assert.equal(JSON.parse(await readFile(liveLock, "utf8")).token, "live");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("managed outbox claims jobs before calling handlers", async () => {
+  const root = await mkdtemp(join(tmpdir(), "speccraft-outbox-test-"));
+  try {
+    const outbox = new ManagedOutbox(join(root, "outbox.jsonl"));
+    const queued = await outbox.publish("sync", { revision: 1 }, "sync-1");
+    const drained = await outbox.drain(async (job) => {
+      assert.equal(job.id, queued.id);
+      assert.equal(typeof job.leaseToken, "string");
+      return { accepted: true };
+    });
+    assert.equal(drained[0].status, "completed");
+    assert.deepEqual(drained[0].output, { accepted: true });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("managed outbox does not retry the same job repeatedly in one drain", async () => {
+  const root = await mkdtemp(join(tmpdir(), "speccraft-outbox-retry-"));
+  try {
+    const outbox = new ManagedOutbox(join(root, "outbox.jsonl"));
+    await outbox.publish("sync", {}, "sync-retry");
+    let attempts = 0;
+    const drained = await outbox.drain(async () => {
+      attempts += 1;
+      throw new Error("temporary outage");
+    });
+    assert.equal(attempts, 1);
+    assert.equal(drained[0].status, "retrying");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
