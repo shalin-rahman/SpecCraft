@@ -57,11 +57,12 @@ The current local reference implementation provides:
 - basic graph traversal/coverage and requirement impact helpers, without a unified canonical graph;
 - local file-backed and in-memory reference adapters alongside production contracts.
 - HS256/RS256 identity verification against an explicit secret or configured HTTPS JWKS URL. The HTTP API does not use this adapter for its own authentication.
-- managed identity provider setup that rejects missing issuer/audience and missing or conflicting key sources.
+- local identity provider setup that rejects missing issuer/audience and missing or conflicting key sources.
 - local file-backed stores with serialized mutations, exclusive unique temporary files, atomic replacement, and stale queue-lock recovery; this is not distributed coordination infrastructure.
 - a local file-backed queue with claim-token fencing and test-owned temporary directories; this is not distributed queue infrastructure.
+- focused modules under `src/` for file persistence and queues, local identity, environment-backed secrets, in-memory adapters, and security review. `production-infrastructure.js` keeps the former imports available as a compatibility barrel.
 
-The complete suite passed 42 tests on 2026-09-27 after the graph, scan-boundary, identity-configuration, and queue regressions were added. Earlier checkpoints had 28 tests after the runtime-security slice and 25 after the parser/API repair pass. Details and remaining architectural gaps are tracked in [the implementation plan](semantic-graph-implementation-plan.md). Re-run `npm test` for the current checkout; this recorded result is evidence from that date, not a guarantee for future changes.
+The complete suite passed 44 tests on 2026-09-27 after the infrastructure modules were split and direct-import compatibility was checked. Earlier checkpoints had 42 tests after graph, scan-boundary, identity-configuration, and queue regressions; 28 after the runtime-security slice; and 25 after the parser/API repair pass. Details and remaining architectural gaps are tracked in [the implementation plan](semantic-graph-implementation-plan.md). Re-run `npm test` for the current checkout; this recorded result is evidence from that date, not a guarantee for future changes.
 
 ## Project knowledge and change workflow
 

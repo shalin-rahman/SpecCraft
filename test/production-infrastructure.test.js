@@ -51,6 +51,20 @@ test("durable audit records survive reload and verify", async () => {
     const second = new DurableAuditLog(path);
     assert.equal((await second.list()).length, 2);
     assert.equal(await second.verify(), true);
+
+    const concurrentLogs = Array.from({ length: 8 }, () => new DurableAuditLog(path));
+    await Promise.all(concurrentLogs.map((log, index) => log.append({ action: `concurrent-${index}` })));
+    const protectedRecord = await second.append({
+      action: "caller-metadata",
+      sequence: 900,
+      previousHash: "caller-controlled",
+      hash: "caller-controlled"
+    });
+    const records = await second.list();
+    assert.deepEqual(records.map(({ sequence }) => sequence), Array.from({ length: 11 }, (_, index) => index + 1));
+    assert.equal(protectedRecord.sequence, 11);
+    assert.equal(protectedRecord.previousHash, records[9].hash);
+    assert.equal(await second.verify(), true);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

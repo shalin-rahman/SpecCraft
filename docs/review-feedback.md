@@ -1,1596 +1,519 @@
-# SpecCraft implementation and review principles
+# SpecCraft — Master Implementation Prompt
 
-This document records the engineering direction for the existing SpecCraft prototype. It describes intended behavior and working rules; it is not a report that those capabilities are already complete. Use the implementation plan and platform specification for the current verified state.
+You are working on the existing `shalin-rahman/SpecCraft` repository.
 
-The project should grow from its working code in small, reviewable steps. Preserve behavior that already works, check the relevant tests and specifications before changing a contract, and keep current behavior, target behavior, and remaining gaps visible as the implementation evolves.
+Treat the **current repository state, tests, project specifications, `AGENTS.md`, and `docs/semantic-graph-implementation-plan.md` as the source of truth for the current implementation**.
+
+Do not rewrite the project.
+
+Do not assume earlier reviews describe the current state.
+
+First inspect the repository and establish the actual current baseline.
+
+## Objective
+
+Evolve SpecCraft into a persistent, evidence-backed project knowledge layer connecting:
+
+```text
+Requirements / Rules / Workflows / APIs
+              ↕
+        Knowledge Graph
+              ↕
+       Code Graph / Tests
+              ↕
+           Evidence
+              ↕
+     Impact / Drift / Context
+              ↕
+       Review / Synchronization
+              ↕
+        AI Agents / MCP
+```
+
+The goal is **verified synchronization between project intent, specifications, implementation, tests, evidence, and documentation**.
+
+Do not treat AI output or repository inference as authoritative project knowledge.
 
 ---
 
-# 1. Authoritative sources
+## 1. Start with the current repository
 
-Before making changes, understand these sources in this order:
+Before changing code:
 
-1. Existing source code
-2. Existing tests
-3. Existing specifications
-4. Existing architecture/design documentation
-5. Existing research/presentation material
-6. Existing README/user documentation
-7. Existing implementation plans
+* inspect the current source tree;
+* read `AGENTS.md`;
+* read the relevant current specifications/plans;
+* inspect existing tests;
+* run `npm test`;
+* identify the actual current implementation;
+* distinguish implemented, partial, planned, and production-spec-only capabilities.
 
-Do not assume that documentation is automatically correct.
+Do not recreate functionality that already exists.
 
-Do not assume that code is automatically the intended architecture.
-
-Instead determine:
-
-```text
-Current implementation
-        +
-Current specification
-        +
-Current architecture
-        +
-Current tests
-        ↓
-Current verified state
-```
-
-Then compare that with the intended SpecCraft architecture.
+Do not follow an old roadmap blindly if the current code has already moved beyond it.
 
 ---
 
-# 2. Important distinction: current state vs target state
+## 2. Work incrementally
 
-Maintain an explicit distinction between:
+Do **one coherent milestone at a time**.
 
-### CURRENT
-
-What the repository actually implements today.
-
-### TARGET
-
-What the SpecCraft architecture intends to provide.
-
-### GAP
-
-What is missing between CURRENT and TARGET.
-
-Use this model:
+For each milestone:
 
 ```text
-CURRENT
-   ↓
-Verified baseline
-   ↓
-Gap analysis
-   ↓
-Target capability
-   ↓
-Incremental implementation
-   ↓
-Verification
+Inspect
+→ Identify exact gap
+→ Define intended behavior
+→ Identify affected code/spec/tests
+→ Implement smallest compatible change
+→ Focused tests
+→ Full npm test
+→ Review diff
+→ Synchronize specs/docs
+→ Verify behavior
+→ Continue
 ```
 
-Never silently pretend a target capability already exists.
+If the existing specification, implementation, or tests contradict each other and the intended behavior cannot be established from repository evidence:
 
-For example:
+**stop and resolve the ambiguity rather than guessing.**
 
-```text
-File hash changed
-```
-
-must not be described as:
-
-```text
-Semantic specification drift detected
-```
-
-unless the implementation actually performs semantic analysis.
-
-Likewise:
-
-```text
-File → Symbol
-```
-
-must not be described as a complete knowledge graph.
+Never leave a milestone knowingly broken.
 
 ---
 
-# 3. First action — do not modify code
+## 3. Preserve the current foundations
 
-Before changing anything, perform a complete repository assessment.
+The repository already has important working foundations. Preserve them while improving them:
 
-Inspect:
-
-* repository structure;
-* source files;
-* tests;
-* package configuration;
-* scripts;
-* README;
-* specifications;
-* architecture documentation;
-* API documentation;
-* implementation plans;
-* diagrams;
-* configuration;
-* persistence adapters;
-* provider abstractions;
-* security boundaries.
-
-Identify:
-
-* implemented features;
-* partial features;
-* placeholders;
-* duplicated code;
-* dead code;
-* inconsistent terminology;
-* stale documentation;
-* missing tests;
-* misleading tests;
-* architectural violations;
-* public API contracts;
-* compatibility constraints.
-
-Produce an internal matrix:
-
-| Area             | Current Implementation | Tests | Specification | Gap | Planned Change |
-| ---------------- | ---------------------- | ----- | ------------- | --- | -------------- |
-| Knowledge model  |                        |       |               |     |                |
-| Requirements     |                        |       |               |     |                |
-| Rules            |                        |       |               |     |                |
-| Workflows        |                        |       |               |     |                |
-| Graph            |                        |       |               |     |                |
-| Code graph       |                        |       |               |     |                |
-| Traceability     |                        |       |               |     |                |
-| Impact analysis  |                        |       |               |     |                |
-| Drift            |                        |       |               |     |                |
-| Reconstruction   |                        |       |               |     |                |
-| Synchronization  |                        |       |               |     |                |
-| Provenance       |                        |       |               |     |                |
-| Review lifecycle |                        |       |               |     |                |
-| Context compiler |                        |       |               |     |                |
-| Providers        |                        |       |               |     |                |
-| Agents/MCP       |                        |       |               |     |                |
-| Persistence      |                        |       |               |     |                |
-| Security         |                        |       |               |     |                |
-| Testing          |                        |       |               |     |                |
-
-Do not start implementation until this assessment is understood.
-
----
-
-# 4. Establish a baseline
-
-Before modifying code:
-
-* run the complete existing test suite;
-* run available lint/static checks;
-* run build checks;
-* exercise existing APIs;
-* verify repository scanning;
-* verify candidate reconstruction;
-* verify drift detection;
-* verify context compilation;
-* verify proposal/revision behavior.
-
-Record the baseline.
-
-Separate:
-
-```text
-Existing failure
-```
-
-from:
-
-```text
-Regression introduced by our change
-```
-
-Never hide a pre-existing failure.
-
----
-
-# 5. Non-negotiable change rule
-
-Every implementation change must follow:
-
-```text
-Understand
-    ↓
-Specify intended behavior
-    ↓
-Identify affected components
-    ↓
-Check consumers/dependencies
-    ↓
-Make smallest safe change
-    ↓
-Run focused tests
-    ↓
-Run regression tests
-    ↓
-Review diff
-    ↓
-Update specifications
-    ↓
-Update documentation
-    ↓
-Verify consistency
-```
-
-Only then proceed to the next change.
-
----
-
-# 6. Never make a large unverified change
-
-Avoid changes such as:
-
-* replacing the entire graph implementation;
-* moving the entire source tree;
-* rewriting all domain models;
-* replacing all persistence;
-* replacing all parser logic;
-* changing every API at once;
-* changing public contracts without migration;
-* deleting old implementations before proving the replacement works.
-
-Instead use:
-
-```text
-Characterize
-    ↓
-Introduce
-    ↓
-Migrate
-    ↓
-Verify
-    ↓
-Deprecate
-    ↓
-Remove
-```
-
----
-
-# 7. Preserve existing working functionality
-
-The current repository already contains useful implementation foundations.
-
-Preserve and improve:
-
-* specification model;
-* requirement analysis;
-* evidence/provenance;
-* repository scanning;
-* candidate reconstruction;
+* requirement model and analysis;
+* typed knowledge graph;
+* provenance/confidence/review metadata;
+* deterministic graph traversal;
+* parser registry;
+* Babel JavaScript/TypeScript extraction;
+* conservative Python extraction;
+* repository scanning and safety boundaries;
+* import resolution;
 * code graph;
-* drift detection;
+* traceability/impact analysis;
+* candidate reconstruction;
+* file-hash drift detection;
 * context compilation;
-* revision-based proposals;
+* revision/concurrency protection;
 * provider abstraction;
-* audit foundations;
-* security foundations;
-* production-oriented adapters.
+* HTTP platform;
+* local reference infrastructure;
+* existing tests.
 
-Do not remove these merely because they are incomplete.
-
-Improve them incrementally.
+Do not replace working behavior merely for architectural preference.
 
 ---
 
-# 8. Canonical specification model
+## 4. Primary implementation priority
 
-The system should progressively support first-class knowledge entities such as:
+Follow the current dependency order in the repository's knowledge-core implementation plan.
+
+Prioritize the **research-critical knowledge core**, not premature production infrastructure.
+
+The important progression is:
+
+```text
+Canonical knowledge model
+→ Review/proposal lifecycle
+→ Unified typed graph
+→ Better code graph
+→ Traceability
+→ Impact/drift
+→ Evidence-backed reconstruction
+→ Semantic synchronization
+→ Context compiler
+→ Agent/MCP adapter
+```
+
+Do not spend major effort on SaaS/UI/managed infrastructure while the semantic knowledge/synchronization core remains incomplete.
+
+---
+
+## 5. Canonical knowledge model
+
+Consolidate the existing project records and graph model where appropriate.
+
+Support meaningful typed entities such as:
 
 ```text
 Requirement
 Rule
 Workflow
-WorkflowStep
-APIContract
+API
 Permission
-ArchitectureDecision
-CodeSymbol
+Decision
+Code
 Test
 Evidence
 Finding
-TraceLink
-ChangeProposal
-ReviewDecision
+Proposal
 ```
 
-Where appropriate, common metadata should include:
+Do not add abstractions simply because they appear in a diagram.
 
-```text
-id
-type
-version
-status
-source
-provenance
-confidence
-createdAt
-updatedAt
-lastVerifiedAt
-reviewState
-```
+Every new entity or field must have a clear purpose, validation, tests, and consumers.
 
-Do not add fields without a semantic reason.
-
-Every field must have:
-
-* meaning;
-* lifecycle;
-* validation;
-* tests;
-* serialization behavior where required.
-
----
-
-# 9. Knowledge authority
-
-SpecCraft must distinguish:
-
-```text
-Human-authored
-Document-derived
-Code-derived
-Test-derived
-AI-inferred
-Human-reviewed
-Approved
-Verified
-```
-
-Repository-derived information must never automatically become authoritative business requirements.
-
-The correct flow is:
-
-```text
-Evidence
-   ↓
-Observation
-   ↓
-Candidate
-   ↓
-Review
-   ↓
-Approved
-   ↓
-Canonical knowledge
-```
-
-This principle must be preserved throughout the system.
-
----
-
-# 10. Knowledge graph
-
-The existing graph is currently much simpler than the intended architecture.
-
-Do not claim otherwise.
-
-Progressively evolve it from:
-
-```text
-File
- └── defines → Symbol
-```
-
-toward:
-
-```text
-Requirement
- ├── governed-by → Rule
- ├── realized-by → Workflow
- ├── exposed-by → API
- ├── implemented-by → Code
- ├── verified-by → Test
- └── supported-by → Evidence
-```
-
-and implementation relationships such as:
-
-```text
-File
-Module
-Class
-Function
-Method
-API
-Test
-```
-
-with:
-
-```text
-defines
-imports
-calls
-tests
-implements
-exposes
-contains
-depends-on
-```
-
-and knowledge relationships such as:
-
-```text
-governed-by
-constrained-by
-contains
-transitions-to
-exposes
-authorized-by
-implemented-by
-defined-in
-verified-by
-derived-from
-supported-by
-contradicts
-supersedes
-depends-on
-```
-
-The graph must support extension without redesigning the entire system.
-
----
-
-# 11. Code graph — safe migration
-
-The repository contains a parser abstraction but currently uses relatively simple symbol extraction.
-
-Do not simply delete the existing extraction.
-
-Build:
-
-```text
-Repository
-   ↓
-Language Detection
-   ↓
-Parser Registry
-   ↓
-AST
-   ↓
-Normalized Code Model
-   ↓
-Code Graph
-```
-
-Initially prioritize:
-
-* JavaScript;
-* TypeScript;
-* Python.
-
-Extract progressively:
-
-* file;
-* module;
-* class;
-* function;
-* method;
-* import;
-* export;
-* call;
-* test;
-* route/API.
-
-Keep a fallback where necessary.
-
-Every parser enhancement must have tests.
-
----
-
-# 12. Brownfield reconstruction
-
-The current candidate reconstruction must evolve from shallow symbol documentation into evidence-backed reconstruction.
-
-Target:
-
-```text
-Existing Repository
-      ↓
-Evidence Extraction
-      ↓
-Observations
-      ↓
-Candidate Knowledge
-      ├── Requirement
-      ├── Rule
-      ├── Workflow
-      ├── API
-      ├── Permission
-      ├── Architecture
-      └── Verification
-      ↓
-Confidence
-      ↓
-Provenance
-      ↓
-Human Review
-      ↓
-Canonical Knowledge
-```
-
-Every candidate should explain:
+Preserve:
 
 * source;
-* evidence;
-* inference;
+* provenance;
 * confidence;
-* related artifacts;
-* review state.
+* freshness;
+* review state;
+* evidence;
+* revision/history;
 
-Never fabricate business intent.
+where those concepts are actually required.
 
 ---
 
-# 13. Traceability
+## 6. Knowledge graph
 
-Implement meaningful traceability between:
+The target semantic relationship is approximately:
 
 ```text
 Requirement
-   ↓
-Rule
-   ↓
-Workflow
-   ↓
-API
-   ↓
-Code
-   ↓
-Test
-   ↓
-Evidence
+  → Rule
+  → Workflow
+  → API
+  → Code
+  → Test
+  → Evidence
 ```
 
-The system should progressively answer:
+This is a model, not a rigid path that every project must follow.
+
+Keep the graph:
+
+* typed;
+* deterministic;
+* explainable;
+* validated;
+* extensible;
+* provenance-aware.
+
+Do not infer node types from ID naming when explicit project data exists.
+
+Do not create dangling or duplicate relationships.
+
+Preserve compatibility with existing public graph/node contracts unless a migration is justified and tested.
+
+---
+
+## 7. Code graph
+
+Continue the current parser-driven approach.
+
+For supported languages, progressively improve:
+
+```text
+File
+→ Symbol
+→ Import / Export
+→ Call
+→ Test
+→ API / Route
+```
+
+Use AST information where available.
+
+Keep Python's current conservative/lexical limitations explicit until stronger parsing is actually implemented.
+
+Do not claim semantic call resolution when the implementation only performs limited/local resolution.
+
+Repository contents are untrusted input; never execute repository code during analysis.
+
+---
+
+## 8. Traceability and impact
+
+Make relationships useful for answering:
 
 * Which code implements this requirement?
 * Which tests verify it?
-* Which requirements are affected by this code?
-* Which requirements have no implementation?
-* Which requirements have no verification?
-* Which code has no known specification relationship?
-* Which relationships are stale?
-* Which evidence supports a relationship?
+* Which requirements may be affected by this code?
+* Which requirements lack implementation?
+* Which requirements lack verification?
+* Which implementation artifacts have no known specification relationship?
 
-Do not rely only on direct links.
+Impact traversal must preserve explainable paths containing:
 
----
-
-# 14. Multi-hop impact analysis
-
-Replace direct-only impact analysis progressively with graph traversal.
-
-Example:
-
-```text
-REQ-104
-  ↓
-RULE-004
-  ↓
-WORKFLOW-009
-  ↓
-API-017
-  ↓
-SERVICE-022
-  ↓
-CODE-031
-  ↓
-TEST-144
-```
-
-Impact results should preserve:
-
-* path;
-* relationship;
-* confidence;
+* nodes;
+* relationship types;
 * evidence;
+* confidence;
 * freshness;
 * review state.
 
-Do not merely return a flat list of affected IDs.
+Treat impacts as **potential impacts** until reviewed.
 
 ---
 
-# 15. Drift detection
+## 9. Drift
 
-Retain existing SHA-256/file-level drift detection.
+Keep existing file-hash drift behavior compatible.
 
-Then extend it.
+Progressively add:
+
+```text
+file change
+→ symbol change
+→ relationship change
+→ traceability impact
+→ potentially affected knowledge
+```
+
+Do not call a file hash change “semantic drift” by itself.
+
+Classify what the evidence actually establishes.
+
+---
+
+## 10. Brownfield reconstruction
+
+Improve the existing symbol-based candidates into evidence-backed candidates.
 
 Target:
 
 ```text
-File drift
-   ↓
-Symbol drift
-   ↓
-Relationship drift
-   ↓
-Traceability drift
-   ↓
-Specification drift
-   ↓
-Verification drift
+Repository
+→ Observations
+→ Candidate knowledge
+→ Evidence
+→ Confidence
+→ Related artifacts
+→ Human review
+→ Canonical knowledge
 ```
 
-Classify findings such as:
+Candidates must remain candidates.
 
-```text
-ADDED
-REMOVED
-CHANGED
-MOVED
-RENAMED
-RELATIONSHIP_CHANGED
-POTENTIALLY_AFFECTED
-UNVERIFIED
-STALE
-CONFLICTED
-```
+Never automatically turn:
 
-Do not claim semantic certainty from syntactic evidence.
+* code;
+* parser output;
+* AI inference;
+* documentation fragments
+
+into authoritative requirements.
+
+Every inferred candidate should explain where it came from.
 
 ---
 
-# 16. Semantic synchronization
+## 11. Review and synchronization
 
-This is a core capability.
+The review lifecycle must remain explicit:
 
-The existing revision-controlled proposal system is useful, but it is not itself semantic synchronization.
+```text
+discovered
+→ candidate
+→ under_review
+→ accepted / rejected / proposed
+→ approved
+→ canonical
+→ verified
+```
+
+with appropriate stale/conflicted/superseded/deprecated states.
+
+Human approval is required for canonicalization.
 
 Build toward:
 
 ```text
 Detect
-   ↓
-Classify
-   ↓
-Collect Evidence
-   ↓
-Find Related Knowledge
-   ↓
-Generate Proposal
-   ↓
-Explain
-   ↓
-Human Review
-   ↓
-Approve / Reject
-   ↓
-Apply
-   ↓
-Verify
-   ↓
-Record Evidence
+→ Classify
+→ Collect evidence
+→ Find affected knowledge
+→ Create proposal
+→ Explain
+→ Review
+→ Approve / Reject
+→ Apply
+→ Verify
+→ Record evidence
 ```
 
-Support relationships between:
+The existing revision mechanism provides concurrency protection; do not confuse that with complete semantic synchronization.
 
-```text
-Specification ↔ Code
-Specification ↔ Tests
-Code ↔ Tests
-Specification ↔ Evidence
-```
-
-Never silently rewrite canonical specifications because code changed.
-
-Code changes should produce evidence and proposals.
+Do not automatically rewrite specifications because code changed.
 
 ---
 
-# 17. Review and approval
+## 12. Context compiler
 
-Use an explicit lifecycle.
-
-Possible states:
-
-```text
-DISCOVERED
-CANDIDATE
-UNDER_REVIEW
-ACCEPTED
-REJECTED
-PROPOSED
-APPROVED
-CANONICAL
-VERIFIED
-STALE
-CONFLICTED
-SUPERSEDED
-DEPRECATED
-```
-
-Define valid transitions.
-
-Reject invalid transitions.
-
-Record:
-
-* actor;
-* timestamp;
-* reason;
-* evidence;
-* previous state;
-* new state.
-
-Human approval must remain explicit for authoritative knowledge changes.
-
----
-
-# 18. Context compiler
-
-The context compiler must eventually construct task-specific context containing relevant:
+Evolve context compilation toward a deterministic, bounded package containing only relevant information, such as:
 
 ```text
 Task
 Requirements
 Rules
-Constraints
 Workflows
 APIs
-Permissions
 Relevant code
 Tests
-Architecture decisions
+Decisions
 Findings
 Evidence
-Unresolved questions
+Unknowns
 Provenance
-Context revision
+Revision
 ```
 
-Context generation should be:
+Context must come from the knowledge model/graph rather than being merely a substring search over repository artifacts.
 
-* relevant;
-* bounded;
-* provenance-aware;
-* reproducible where practical;
-* independent of any specific AI provider.
+Do not couple canonical context semantics to a particular AI provider.
 
 ---
 
-# 19. AI agent independence
+## 13. Agents and MCP
 
-Do not make SpecCraft dependent on one AI provider.
+Keep AI agents outside the knowledge authority boundary.
 
-Agents such as:
+Agents may:
 
-```text
-Codex
-Claude
-Copilot
-Cursor
-Kiro
-other agents
-```
+* consume context;
+* analyze evidence;
+* propose changes;
+* create proposals.
 
-must be treated as clients/adapters.
+They must not silently become the canonical knowledge store.
 
-The architecture is:
+Once the core application operations are stable, expose them through thin adapters such as HTTP/MCP/CLI.
 
-```text
-SpecCraft Knowledge Core
-        ↑
-MCP / CLI / API / Adapter
-        ↑
-AI Agent
-```
-
-not:
-
-```text
-AI Agent
-   ↓
-owns project knowledge
-```
-
-AI-generated information must retain its provenance.
+Do not expose internal classes as the agent contract.
 
 ---
 
-# 20. MCP / agent API
+## 14. Specifications and documentation must stay synchronized
 
-Progressively expose stable operations such as:
+Whenever behavior changes:
 
-```text
-speccraft.project.get
-speccraft.context.compile
-speccraft.graph.query
-speccraft.requirement.review
-speccraft.impact.analyze
-speccraft.drift.detect
-speccraft.proposal.create
-speccraft.proposal.review
-speccraft.evidence.get
-```
+* update the relevant specification;
+* update affected tests;
+* update architecture/docs where necessary;
+* update capability status;
+* clearly label partial/reference functionality.
 
-Keep adapters thin.
+Never document planned functionality as implemented.
 
-Do not expose internal classes as the public protocol.
+Never silently leave the specification behind the implementation.
 
 ---
 
-# 21. Specification ↔ implementation synchronization
+## 15. Testing rules
 
-This is a mandatory rule.
+For every meaningful change:
 
-Whenever implementation changes a behavior covered by a specification:
+1. Add/update focused tests.
+2. Preserve existing regression coverage.
+3. Run `npm test`.
+4. Test public API behavior when affected.
+5. Test security/path boundaries when affected.
+6. Test provenance/review behavior when affected.
 
-1. identify the affected specification;
-2. determine whether behavior still satisfies it;
-3. update the implementation OR specification as appropriate;
-4. update traceability;
-5. update tests;
-6. update evidence;
-7. update documentation;
-8. record the decision.
+Never delete or weaken tests simply to make them pass.
 
-Likewise, whenever a specification changes:
-
-1. identify affected code;
-2. identify affected tests;
-3. identify affected workflows;
-4. identify affected APIs;
-5. identify affected permissions;
-6. generate impact findings/proposals;
-7. verify implementation after changes.
-
-Do not leave one side silently stale.
+There is currently no configured lint/type-check/build script; do not invent successful results for tools the repository does not provide.
 
 ---
 
-# 22. Documentation synchronization
+## 16. Production boundary
 
-Documentation must reflect actual behavior.
+Treat production-oriented infrastructure in the repository according to its documented status.
 
-After every meaningful feature/refactor:
+Do not falsely present local/reference adapters as production infrastructure.
 
-Check:
+Do not implement managed deployment, identity, durable managed persistence, distributed rate limiting, external secrets, encryption, or production security sign-off unless the current milestone explicitly requires them.
 
-* README;
-* architecture docs;
-* API docs;
-* specification;
-* implementation status;
-* examples;
-* diagrams;
-* limitations;
-* tests.
-
-Do not describe planned functionality as implemented.
-
-Do not leave obsolete architecture descriptions behind.
+The immediate priority is the **knowledge core**.
 
 ---
 
-# 23. Tests are part of the implementation
+## 17. Refactoring rules
 
-A feature is incomplete without tests.
+Refactor when it improves:
 
-Maintain:
+* correctness;
+* responsibility boundaries;
+* dependency direction;
+* testability;
+* maintainability;
+* semantic clarity.
 
-### Unit tests
-
-Domain behavior, graph behavior, lifecycle, validation, synchronization.
-
-### Integration tests
-
-Repository analysis, parsers, graph building, reconstruction, persistence, API.
-
-### Regression tests
-
-Every important discovered bug should receive a regression test.
-
-### Contract tests
-
-Public API behavior where applicable.
-
-Never delete a test simply because it is inconvenient.
-
-Never weaken an assertion merely to make the test pass.
-
----
-
-# 24. Test-driven refactoring for risky changes
-
-For risky existing behavior:
-
-```text
-Existing behavior
-      ↓
-Characterization test
-      ↓
-Refactor
-      ↓
-Run test
-      ↓
-Improve implementation
-```
-
-For new domain behavior:
-
-```text
-Specification
-      ↓
-Test
-      ↓
-Implementation
-      ↓
-Verification
-```
-
-This does not require rigid TDD for every line of code, but behavior must be testable before declaring it stable.
-
----
-
-# 25. Public API compatibility
-
-Before modifying public functions/endpoints/configuration:
-
-Search all consumers.
+Avoid unrelated rewrites.
 
 Prefer:
 
 ```text
-Add new behavior
-      ↓
-Compatibility layer
-      ↓
-Migration
-      ↓
-Deprecation
-      ↓
-Removal
+characterize
+→ introduce
+→ migrate
+→ verify
+→ deprecate
+→ remove
 ```
 
-If a breaking change is necessary:
+over destructive rewrites.
 
-* document it;
-* update consumers;
-* update tests;
-* provide migration;
-* update API documentation.
-
-Never create accidental breaking changes.
+Preserve existing public contracts unless a deliberate migration is required.
 
 ---
 
-# 26. Database and persistence
+## 18. Definition of done
 
-Do not rush into replacing reference/file persistence.
+A milestone is done when:
 
-First establish correct domain semantics.
+* intended behavior is implemented;
+* existing behavior remains compatible where required;
+* focused tests pass;
+* `npm test` passes;
+* relevant specifications are updated;
+* documentation is accurate;
+* graph/provenance/review semantics remain valid;
+* no known regression is hidden;
+* remaining limitations are explicit.
 
-When persistence changes:
-
-* use explicit migrations;
-* avoid destructive changes;
-* preserve historical records;
-* preserve revision information;
-* preserve audit history;
-* preserve provenance;
-* test migration behavior;
-* maintain concurrency guarantees.
-
-Clearly distinguish:
+At the end of each milestone, report:
 
 ```text
-Reference implementation
-```
-
-from:
-
-```text
-Production infrastructure
-```
-
----
-
-# 27. Security
-
-Never weaken existing security controls.
-
-Preserve:
-
-* repository boundary restrictions;
-* input validation;
-* secret handling;
-* authentication;
-* authorization;
-* audit logging;
-* rate limiting.
-
-Repository analysis must not execute arbitrary repository code.
-
-Repository contents must be treated as untrusted input.
-
-Never expose secrets in logs or generated context.
-
----
-
-# 28. Cleanup rules
-
-Cleanup is encouraged, but only when safe.
-
-Clean up:
-
-* dead code;
-* duplicated logic;
-* obsolete abstractions;
-* inconsistent naming;
-* unreachable branches;
-* misleading comments;
-* stale documentation;
-* unnecessary complexity.
-
-Do not perform cosmetic rewrites across unrelated files.
-
-Keep each refactoring logically scoped.
-
----
-
-# 29. Architectural refactoring
-
-Move gradually toward:
-
-```text
-src/
-├── domain/
-│   ├── knowledge/
-│   ├── graph/
-│   ├── provenance/
-│   ├── review/
-│   └── synchronization/
-│
-├── application/
-│   ├── reconstruction/
-│   ├── traceability/
-│   ├── impact/
-│   ├── drift/
-│   ├── synchronization/
-│   ├── context/
-│   └── review/
-│
-├── infrastructure/
-│   ├── repository/
-│   ├── parsers/
-│   ├── persistence/
-│   ├── queue/
-│   ├── identity/
-│   └── providers/
-│
-└── adapters/
-    ├── http/
-    ├── cli/
-    ├── mcp/
-    └── agents/
-```
-
-However:
-
-> **Do not move files merely to make the tree look like this.**
-
-Only introduce a boundary when it improves responsibility, testability, dependency direction, or domain clarity.
-
----
-
-# 30. Engineering principles
-
-Use appropriate engineering practices including:
-
-* SOLID;
-* DRY;
-* KISS;
-* separation of concerns;
-* dependency inversion;
-* domain-driven design where useful;
-* hexagonal architecture;
-* explicit domain boundaries;
-* specification pattern where appropriate;
-* unit-of-work where persistence requires it;
-* domain events where meaningful;
-* outbox pattern where asynchronous integration requires it;
-* optimistic concurrency;
-* immutable evidence/history where appropriate;
-* deterministic processing where possible.
-
-Do not apply patterns simply for pattern's sake.
-
-Prefer simple designs that preserve clear semantics.
-
----
-
-# 31. Self-hosting / self-describing SpecCraft
-
-As the implementation becomes capable, use SpecCraft to describe and analyze itself.
-
-Introduce a meaningful structure such as:
-
-```text
-/spec
-├── requirements/
-├── rules/
-├── workflows/
-├── decisions/
-├── architecture/
-├── traceability/
-├── evidence/
-└── tests/
-```
-
-Eventually:
-
-```text
-SpecCraft
-   ↓
-analyzes SpecCraft repository
-   ↓
-builds knowledge graph
-   ↓
-checks specification ↔ implementation
-   ↓
-checks tests
-   ↓
-detects drift
-   ↓
-generates proposals
-   ↓
-human reviews
-```
-
-Do not create artificial specifications simply to fill directories.
-
-Only capture meaningful project knowledge.
-
----
-
-# 32. Implementation order
-
-Follow this order unless repository evidence demonstrates a safer dependency order:
-
-```text
-PHASE 0
-Baseline + repository audit
-
-PHASE 1
-Canonical knowledge model
-
-PHASE 2
-Typed knowledge graph
-
-PHASE 3
-AST-based code graph
-
-PHASE 4
-Traceability
-
-PHASE 5
-Multi-hop impact analysis
-
-PHASE 6
-Drift / consistency engine
-
-PHASE 7
-Brownfield reconstruction
-
-PHASE 8
-Context compiler
-
-PHASE 9
-Review/proposal lifecycle
-
-PHASE 10
-Semantic synchronization
-
-PHASE 11
-MCP / agent adapters
-
-PHASE 12
-Durable production persistence
-
-PHASE 13
-UI / collaboration / SaaS
-```
-
-Do not jump to later phases while foundational semantics are unstable.
-
----
-
-# 33. Vertical slice rule
-
-Do not implement every layer partially if a smaller end-to-end slice can prove the architecture.
-
-Prefer vertical slices such as:
-
-```text
-Requirement
-   ↓
-Rule
-   ↓
-Code
-   ↓
-Test
-   ↓
-Evidence
-   ↓
-Graph
-   ↓
-Impact
-   ↓
-Sync Proposal
-   ↓
-Review
-```
-
-Make one complete path work correctly before multiplying it across the entire repository.
-
----
-
-# 34. Flagship workflow
-
-The strongest demonstration should be:
-
-```text
-Existing Repository
-       ↓
-Analyze
-       ↓
-Code Graph
-       ↓
-Candidate Specifications
-       ↓
-Evidence + Provenance
-       ↓
-Human Review
-       ↓
-Canonical Knowledge
-       ↓
-Modify Code
-       ↓
-Detect Change
-       ↓
-Affected Specifications
-       ↓
-Affected Tests
-       ↓
-Drift / Impact Report
-       ↓
-Synchronization Proposal
-       ↓
-Human Approval
-       ↓
-Verification
-```
-
-This should become a major integration test and demonstration workflow.
-
----
-
-# 35. Example synchronization result
-
-A useful result should look conceptually like:
-
-```text
-SYNC PROPOSAL #102
-
-Detected:
-membership/service.py::close_membership changed
-
-Potentially affected:
-REQ-001
-RULE-004
-TEST-144
-
-Reason:
-REQ-001
-  → RULE-004
-  → close_membership()
-
-Evidence:
-commit abc123
-source lines 88–112
-test TEST-144
-
-Confidence:
-0.87
-
-Recommended action:
-Review whether REQ-001 remains satisfied.
-
-Status:
-UNDER_REVIEW
-```
-
-The system should say:
-
-> Evidence indicates that the specification may be affected.
-
-It should NOT automatically say:
-
-> The specification is wrong.
-
----
-
-# 36. Contradictions must not be silently resolved
-
-If the repository contains conflicting information:
-
-```text
-Specification A
-       ↕
-Specification B
-```
-
-or:
-
-```text
-Specification
-      ↕
-Implementation
-```
-
-or:
-
-```text
-Documentation
-      ↕
-Implementation
-```
-
-do not guess.
-
-Create:
-
-```text
-CONFLICT
-```
-
-with:
-
-* conflicting artifacts;
-* evidence;
-* explanation;
-* affected relationships;
-* review requirement.
-
-Human/authorized review determines the resolution.
-
----
-
-# 37. Uncertainty must be explicit
-
-Use meaningful confidence/provenance.
-
-Distinguish:
-
-```text
-Observed
-Inferred
-Suggested
-Human-confirmed
+Implemented
 Verified
-Unknown
+Changed
+Remaining
 ```
 
-Never convert uncertainty into false certainty.
-
-This is especially important for:
-
-* brownfield reconstruction;
-* AI-generated specifications;
-* semantic relationships;
-* business rules;
-* permissions;
-* impact analysis.
+Then continue only if the next milestone is sufficiently understood.
 
 ---
 
-# 38. "fully implemented" means more than code exists
+## Final principle
 
-Do not declare a capability complete because a function exists.
+**Do not optimize for the amount of code changed.**
 
-A capability is complete only when:
+Optimize for:
 
 ```text
-Domain model
-+
-Application behavior
-+
-Infrastructure
-+
-Adapters
-+
-Validation
-+
-Tests
-+
-Error handling
-+
-Security
-+
-Persistence where required
-+
-Documentation
-+
 Specification
-+
-Traceability
-+
-Evidence
-+
-Compatibility
-```
-
-are appropriately handled.
-
-If something is only partial, explicitly label it:
-
-```text
-PARTIAL
-PROTOTYPE
-REFERENCE
-PLANNED
-```
-
-Never disguise partial functionality as complete.
-
----
-
-# 39. Final check after each milestone
-
-Before moving forward:
-
-### Code
-
-* Is the code correct?
-* Is responsibility clear?
-* Is duplication reduced?
-* Is there dead code?
-
-### Tests
-
-* Do tests pass?
-* Are new behaviors covered?
-* Are regressions covered?
-
-### Specification
-
-* Does the specification describe the new behavior?
-* Is it still accurate?
-
-### Architecture
-
-* Does the architecture documentation match reality?
-
-### Traceability
-
-* Are relevant relationships updated?
-
-### Evidence
-
-* Can the implementation be traced to evidence?
-
-### Compatibility
-
-* Did existing behavior remain intact?
-
-### Security
-
-* Did security boundaries remain intact?
-
-### Documentation
-
-* Are examples and API descriptions correct?
-
-### Diff
-
-* Are there unrelated changes?
-
-Only continue when the milestone is internally consistent.
-
----
-
-# 40. Final project-level validation
-
-At the end of the implementation pass, perform a complete consistency review:
-
-```text
-Specifications
-      ↕
-Architecture
-      ↕
-Domain Model
-      ↕
-Application Services
-      ↕
-Infrastructure
-      ↕
-Adapters
-      ↕
+    ↕
+Knowledge Graph
+    ↕
+Implementation
+    ↕
 Tests
-      ↕
+    ↕
 Evidence
-      ↕
+    ↕
 Documentation
 ```
 
-Identify every remaining inconsistency.
+remaining truthful, explainable, and synchronized.
 
-Fix what can safely be fixed.
-
-Explicitly document what remains.
-
-Do not hide limitations.
-
----
-
-# 41. Most important rule
-
-The governing principle for the entire task is:
-
-> **Do not optimize for the amount of code changed. Optimize for verified convergence between the intended specification, architecture, implementation, tests, evidence, and documentation.**
-
-The repository should become better after every milestone, not merely different.
-
-Never leave the repository in a knowingly broken state at the end of a milestone.
-
-Never make a large speculative change when a smaller verified change can achieve the same architectural progress.
-
-Never silently change project meaning.
-
-Never silently promote inference to authority.
-
-Never claim a capability is complete until its implementation, tests, specifications, documentation, and evidence are sufficiently aligned.
-
-The desired final state is:
-
-```text
-                    ┌───────────────────┐
-                    │   Human Intent    │
-                    └─────────┬─────────┘
-                              ↓
-                    ┌───────────────────┐
-                    │ Canonical Specs   │
-                    └─────────┬─────────┘
-                              ↕
-                    ┌───────────────────┐
-                    │ Knowledge Graph   │
-                    └─────────┬─────────┘
-                              ↕
-                    ┌───────────────────┐
-                    │ Synchronization   │
-                    └──────┬───────┬────┘
-                           ↓       ↑
-                    ┌─────────┐ ┌─────────┐
-                    │Code     │ │Tests    │
-                    │Graph    │ │Evidence │
-                    └────┬────┘ └────┬────┘
-                         ↓           ↓
-                    ┌───────────────────┐
-                    │ Verified Software │
-                    └───────────────────┘
-                              ↕
-                    ┌───────────────────┐
-                    │ Context Compiler  │
-                    └─────────┬─────────┘
-                              ↓
-                    ┌───────────────────┐
-                    │ AI Agents / MCP   │
-                    └───────────────────┘
-```
-
-**Build toward this architecture without breaking the existing repository on the way there.**
+**Use the current repository as the baseline. Preserve what already works. Implement only the next justified capability. Never guess about project meaning. Never promote inference to canonical knowledge.**

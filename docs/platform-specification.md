@@ -39,7 +39,7 @@ Current drift detection compares scanned file hashes and reports added, removed,
 
 Synchronization is event-based. A proposal contains an operation, source evidence, expected revision, and author. Applying a proposal requires the expected revision to match and produces a new revision. Conflicts are rejected, not silently merged.
 
-The local reference implementation provides this contract through `KnowledgeStore`. The HTTP proposal route records pending collaboration proposals; a production persistence adapter must apply approved proposals through the same revision check. `ManagedIdentityProvider` rejects construction unless issuer/audience are present and exactly one of HTTPS JWKS or a shared signing secret is configured. It remains a local reference adapter; the HTTP API does not use it for authentication.
+The local reference implementation provides this contract through `KnowledgeStore`. The HTTP proposal route records pending collaboration proposals; a production persistence adapter must apply approved proposals through the same revision check. `LocalIdentityProvider` rejects construction unless issuer/audience are present and exactly one of HTTPS JWKS or a shared signing secret is configured. It remains a local reference adapter; the HTTP API does not use it for authentication.
 
 The local `FileJobQueue` serializes cooperating writers with a filesystem lock, recovers unchanged malformed locks after the stale interval, uses unique temporary files and atomic replacement, and requires a current claim token for completion/failure. The file collaboration and project repositories use the same local lock and exclusive temporary-file pattern for mutations. These controls support cooperating local processes; they are not distributed coordination guarantees and do not replace managed production infrastructure.
 
@@ -78,7 +78,7 @@ The local reference service applies:
 - a 1,000-proposal cap that preserves proposals already accepted
 - structured error responses without source-content leakage
 
-`ManagedIdentityService` verifies HS256 tokens against an explicit shared secret. `ManagedIdentityProvider` can also verify RS256 tokens against a configured HTTPS JWKS endpoint. These are local reference adapters; the HTTP API does not use them for authentication. Production security still needs provider discovery and integration, project authorization, encryption, secret rotation, network controls, dependency scanning, and a threat-model review.
+`HmacIdentityVerifier` verifies HS256 tokens against an explicit shared secret. `LocalIdentityProvider` can also verify RS256 tokens against a configured HTTPS JWKS endpoint. Both remain local reference adapters; the HTTP API does not use them for authentication. The `ManagedIdentityService` and `ManagedIdentityProvider` exports are compatibility aliases. Production security still needs provider discovery and integration, project authorization, encryption, secret rotation, network controls, dependency scanning, and a threat-model review.
 
 ## API contracts
 

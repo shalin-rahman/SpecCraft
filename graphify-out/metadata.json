@@ -10,7 +10,16 @@
     "6": "Community 6",
     "7": "Community 7",
     "8": "Community 8",
-    "9": "Community 9"
+    "9": "Community 9",
+    "10": "Test Management",
+    "11": "AST Analysis",
+    "12": "Community 12",
+    "13": "Community 13",
+    "14": "Knowledge Store",
+    "15": "Module Dependency Graph",
+    "16": "Community 16",
+    "17": "Community 17",
+    "18": "Network Server"
   },
   "communitySummaries": {
     "0": "",
@@ -22,24 +31,46 @@
     "6": "",
     "7": "",
     "8": "",
-    "9": ""
+    "9": "",
+    "10": "Handles the lifecycle and metadata of test cases\u2014from candidate, review, approval, to acceptance\u2014tracking coverage metrics, execution results, and related graph data.",
+    "11": "Handles traversal state, candidate detection, and symbol resolution in static code analysis.",
+    "12": "",
+    "13": "",
+    "14": "Handles persistence and retrieval of knowledge artifacts while detecting and managing revision conflicts during updates.",
+    "15": "Handles representation and normalization of module dependencies as a directed graph.",
+    "16": "",
+    "17": "",
+    "18": "Manages network communication by handling server lifecycle and port assignments."
   },
   "communityLinks": {
-    "0": {
-      "8": 2,
-      "6": 4
+    "6": {
+      "7": 2,
+      "8": 1,
+      "5": 2,
+      "1": 2,
+      "4": 4
     },
-    "8": {
-      "6": 1
+    "7": {
+      "8": 1
     },
-    "6": {},
+    "8": {},
+    "2": {
+      "7": 2
+    },
+    "5": {
+      "1": 1
+    },
+    "1": {
+      "4": 6,
+      "7": 5,
+      "6": 1,
+      "8": 1
+    },
     "4": {
-      "7": 4,
-      "9": 2,
-      "2": 1
+      "1": 2
     },
-    "7": {},
-    "9": {},
-    "2": {}
+    "3": {
+      "5": 1
+    }
   }
 }

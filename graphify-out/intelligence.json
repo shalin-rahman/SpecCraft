@@ -1,36 +1,36 @@
 {
   "hotspots": [
     {
-      "label": "walk()",
-      "risk": 0.567,
+      "label": "FileJobQueue",
+      "risk": 0.631,
+      "type": "CLASS"
+    },
+    {
+      "label": "ManagedIdentityProvider",
+      "risk": 0.493,
+      "type": "CLASS"
+    },
+    {
+      "label": "parseJavaScriptSource()",
+      "risk": 0.442,
       "type": "FUNCTION"
     },
     {
-      "label": "compileContext()",
-      "risk": 0.435,
+      "label": "createPlatformServer()",
+      "risk": 0.363,
       "type": "FUNCTION"
     },
     {
-      "label": "renderMvpDemo()",
-      "risk": 0.434,
-      "type": "FUNCTION"
-    },
-    {
-      "label": "createRequirement()",
-      "risk": 0.388,
-      "type": "FUNCTION"
-    },
-    {
-      "label": "analyzeRequirement()",
-      "risk": 0.342,
+      "label": "buildCodeGraph()",
+      "risk": 0.243,
       "type": "FUNCTION"
     }
   ],
   "blast_radius": {
-    "walk()": 4,
-    "scanRepository()": 4,
-    "requireText()": 4,
-    "ensureRepositoryRoot()": 3,
-    "hash()": 3
+    "FileJobQueue": 10,
+    "ProjectRepository": 10,
+    "ManagedDatabaseAdapter": 8,
+    "buildCodeGraph()": 7,
+    "VaultSecretProvider": 7
   }
 }
